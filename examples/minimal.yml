@@ -1,0 +1,81 @@
+sma:
+  version: 0.0.1
+  services:
+    prometheus:
+      address: http://130.149.158.132:32426
+  observation:
+    mode: trigger
+    window:
+      left: 10s
+      right: 10s
+      duration: 10s
+    targets:
+      - name: suo
+        namespace: kubeai
+  measurements:
+    # we are using python string templating, you can (and should) specify where additional labels with ${SMA_SELECTORS} otherwise results might be unfiltered
+    - system_CPU: # name of the measurment in the report
+        type: aggregate # type of the measurment (raw, aggregate) 
+        layer: pod # layer of the measurment (pod, node, container)
+        query: sum(rate(container_cpu_usage_seconds_total{namespace="${namespace}"}[1m]))
+        step: 30 # sampling step in seconds
+        target:
+          - all # target name defined in the observation section (all for all targets)
+    - system_CPU_1:
+        type: raw
+        query: container_cpu_usage_seconds_total{namespace="${namespace}"}
+        step: 30
+        target: 
+          - suo
+    - wall_power:
+        type: raw
+        query: shelly_apower_watts
+        step: 30
+        target:
+          - all
+    - pod_power_consumption_kepler_watts:
+        type: aggregate
+        layer: pod
+        query: sum by (pod_name) (rate(kepler_container_joules_total{container_namespace="${namespace}"}[1m]))
+        step: 30
+        target:
+          - suo
+    - pod_power_consumption_kepler_old_watts:
+        type: aggregate
+        layer: pod
+        query: sum by (pod_name) (rate(kepler_container_core_joules_total[1m]))
+        step: 30
+        target:
+          - suo
+    - node_power_consumption_scaphandre:
+        type: raw
+        layer: node
+        query: scaph_host_power_microwatts
+        step: 30
+        target:
+          - all
+    - node_power_consumption_kepler:
+        type: aggregate
+        layer: node
+        query: sum by (node) (rate(kepler_node_cpu_joules_total[1m]))
+        step: 30
+        target:
+          - suo
+    - container_info:
+        type: raw
+        layer: container
+        query: kube_pod_container_info{namespace="${namespace}"}
+        step: 30
+        target:
+          - suo
+    - process_power_consumption:
+        type: raw
+        layer: pod
+        query: kepler_process_joules_total{container_namespace="${namespace}"}
+        step: 30
+        target:
+          - suo
+  report:
+    format: csv
+    location: reports/
+    filename: "${name}_${startTime}.csv"
