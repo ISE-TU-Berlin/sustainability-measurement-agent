@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["sma"]
+
+[project]
+name = "sma"
+version = "0.1.0"
+description = "Sustainability Measurement Agent - A tool for collecting and analyzing sustainability metrics in cloud native enviroments."
+authors = [
+    { name = "Sebastian Werner", email = "werner@tu-berlin.de" }
+]
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.8"
+keywords = ["sustainability", "measurements", "agent"]
+classifiers = [
+    "Programming Language :: Python :: 3.8",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: System :: Monitoring",
+]
+dependencies = ["requests>=2.32.4", "kubernetes", "pyyaml", "pandas", "numpy"]
+
+
+[project.urls]
+Homepage = "https://github.com/ISE-TU-Berlin/sustainability-measurement-agent"
+
+

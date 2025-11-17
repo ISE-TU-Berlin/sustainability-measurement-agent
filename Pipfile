@@ -11,6 +11,8 @@ pandas = "*"
 numpy = "*"
 
 [dev-packages]
+pyproject-pipenv = "*"
+build = "*"
 
 [requires]
 python_version = "3.13"

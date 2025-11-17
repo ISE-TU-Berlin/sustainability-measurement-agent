@@ -13,6 +13,8 @@ It maps:
 
 The loader also provides conveniences to construct a Prometheus client and
 convert measurements into `PrometheusQuery` objects.
+
+Aided by AI.
 """
 
 from __future__ import annotations

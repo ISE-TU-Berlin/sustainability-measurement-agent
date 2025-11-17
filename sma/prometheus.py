@@ -3,9 +3,11 @@ Purpose: Interacts with the Prometheus API.
 Functionality: Provides methods to query metrics and labels from Prometheus.
 Connection: Used by responses.py and validation.py to gather metrics and validate configurations.
 
-Wrapper around the Prometheus HTTP API"""
+Wrapper around the Prometheus HTTP API
 
-#TODO: accknowlage OXN
+Licenced under GLPv3, originally developed for the OXN project (https://github.com/nymphbox/oxn).
+"""
+
 #TODO: check if we should use the offical prometheus client library instead of requests.
 
 import abc

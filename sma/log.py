@@ -1,9 +1,6 @@
 """
-Purpose: Configures logging for the application.
-Functionality: Initializes and configures logging settings based on provided log level and optional log file.
-Connection: Used by main.py to set up logging.
-
-Logging configuration for oxn"""
+Licenced under GLPv3, originally developed for the OXN project (https://github.com/nymphbox/oxn).
+"""
 import logging
 import socket
 import logging.config
@@ -32,7 +29,7 @@ def initialize_logging(loglevel, logfile=None):
             },
         },
         "loggers": {
-            "oxn": {
+            "sma": {
                 "handlers": ["console"],
                 "level": loglevel,
                 "propagate": False,
