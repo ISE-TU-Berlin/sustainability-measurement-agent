@@ -2,7 +2,7 @@ from logging import getLogger
 import sys
 from sma import SustainabilityMeasurementAgent, Config, SMAObserver
 
-log = getLogger("sma")  
+log = getLogger(__file__)  
 log.setLevel("INFO")
 if len(sys.argv) != 2:
     log.error("Usage: python sma.py <config-file>")
@@ -29,7 +29,10 @@ class SimpleLogger(SMAObserver):
         log.info("SMA teardown completed.")
 sma.register_observer(SimpleLogger())
 sma.connect()
-sma.run()
+def wait_for_user() -> None:
+    input("Hit Enter to to Stop Measuring...")
+
+sma.run(wait_for_user)
 sma.teardown()
 
 log.info("Sustainability Measurement Agent finished.")

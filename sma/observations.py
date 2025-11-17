@@ -16,7 +16,7 @@ class ObservationWindow:
 
 @dataclass
 class ObservationConfig(object):
-    def __init__(self, mode: str, window: ObservationWindow, targets: Optional[List[ObservationTarget]] = None):
+    def __init__(self, mode: str, window: Optional[ObservationWindow], targets: Optional[List[ObservationTarget]] = None):
         self.mode = mode
         self.window = window
         self.targets = targets if targets is not None else []

@@ -156,14 +156,18 @@ class Config:
 
         # Observation
         obs_raw = sma.get("observation", {}) or {}
-        mode = obs_raw.get("mode", "trigger")
+        mode = obs_raw.get("mode", "timer")  # default to 'timer' mode
         window_raw = obs_raw.get("window", {}) or {}
-
-        window = ObservationWindow(
-            left=_parse_duration(window_raw.get("left")),
-            right=_parse_duration(window_raw.get("right")),
-            duration=_parse_duration(window_raw.get("duration")),
-        )
+        window = None
+        if len(window_raw) == 0:
+            if mode == "window":
+                raise ValueError("observation mode 'window' requires a 'window' configuration")
+        else:
+            window = ObservationWindow(
+                left=_parse_duration(window_raw.get("left")),
+                right=_parse_duration(window_raw.get("right")),
+                duration=_parse_duration(window_raw.get("duration")),
+            )
 
         targets_list = obs_raw.get("targets", []) or []
         named_targets: Dict[str, ObservationTarget] = {}

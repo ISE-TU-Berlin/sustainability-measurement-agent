@@ -4,7 +4,7 @@ sma:
     prometheus:
       address: http://130.149.158.132:32426
   observation:
-    mode: trigger
+    mode: trigger # triggger (python function that blocks), timer (based on window settings), continuous (collects data until stopped, with python function that blocks)
     window:
       left: 10s
       right: 10s

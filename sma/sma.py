@@ -3,7 +3,7 @@ from curses import window
 import datetime
 from logging import Logger, getLogger
 from time import sleep
-from typing import Protocol
+from typing import Optional, Protocol, Callable
 from sma.config import Config
 from sma.service import ServiceException
 import os
@@ -73,6 +73,10 @@ class SustainabilityMeasurementAgent(object):
             os.makedirs(location)
             self.logger.info(f"Created report location {location}.")
         
+        location = os.path.join(location, startTime.strftime("%Y-%m-%d_%H-%M-%S"))
+        os.makedirs(location)
+        
+        self.logger.info(f"Created report subdirectory {location}.")
         filename_template = Template(self.config.report["filename"])
         
         for name, measurement in queries.items():   
@@ -93,17 +97,17 @@ class SustainabilityMeasurementAgent(object):
                 self.logger.error(f"Error observing measurement {name}: {e}")
         
 
-    def run(self) -> None:
+    def _run_timer(self) -> None:
         window = self.config.observation.window
-
-
+        assert window is not None, "Observation window must be defined for timer mode"
+        
         startTime = datetime.datetime.now()
         self.notify_observers("onLeft")
         self.logger.info(f"Observation mode: {self.config.observation.mode}")
-        self.logger.info(f"Observation window: left={window.left}s, right={window.right}s, duration={window.duration}s")
+        
+        self.logger.info(f"Observation window: left={window.left}s, right={window.right}s, duration={window.duration}s") # type: ignore
 
-        if self.config.observation.mode == "continuous":
-            self.observe_continueously()
+       
 
         sleep(window.left)
         self.notify_observers("onStart")
@@ -112,20 +116,54 @@ class SustainabilityMeasurementAgent(object):
         self.notify_observers("onEnd")
         sleep(window.right)
         self.notify_observers("onRight")
+        
         endTime = datetime.datetime.now()
         totalDuration = endTime - startTime
         self.logger.info(f"Total observation duration: {totalDuration}")
-        if self.config.observation.mode == "trigger":
-            self.observe_once(startTime, endTime)
+        
+        self.observe_once(startTime, endTime)
 
-        # we support two modes, "trigger" and "continuous"
-        # trigger means we will query everything after the window duration (left+ duration + right)
+    
+    def _run_trigger(self,trigger: Callable) -> None:
+        startTime = datetime.datetime.now()
+        window = self.config.observation.window
+        if window is not None:
+            sleep(window.left)
+        self.notify_observers("onStart")
+        trigger()
+        self.notify_observers("onEnd")
+        if window is not None:
+            sleep(window.right)
+        self.notify_observers("onRight")
+        endTime = datetime.datetime.now()
+        self.logger.info(f"Total observation duration: {endTime - startTime}")
+        self.observe_once(startTime, endTime)
+        
+        
+    
+    def _run_continuous(self,trigger: Callable) -> None:
+        
+        self.logger.info(f"Observation mode: {self.config.observation.mode}")
+        self.notify_observers("onStart")
+        self.observe_continueously()
+        trigger()
+        self.notify_observers("onEnd")
+        
 
-        # continuous means we will query every step within the window duration before starting the left offset
-
-        # For now, we only implement the "trigger" mode
-
-        #TODO: implement any left and right offsets
+    def run(self, trigger: Optional[Callable] = None) -> None:
+        if self.config.observation.mode == "timer":
+            self._run_timer()
+        elif self.config.observation.mode == "trigger":
+            if trigger is None:
+                raise ValueError("Trigger function must be provided for trigger mode")
+            self._run_trigger(trigger)
+        elif self.config.observation.mode == "continuous":
+            if trigger is None:
+                raise ValueError("Trigger function must be provided for continuous mode")
+            self._run_continuous(trigger)
+        else:
+            raise ValueError(f"Unknown observation mode: {self.config.observation.mode}")
+    
 
     def teardown(self) -> None:
         self.notify_observers("onTeardown")
