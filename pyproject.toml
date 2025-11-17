@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 packages = ["sma"]
 
 [project]
-name = "sma"
+name = "sustainability-measurement-agent"
 version = "0.1.0"
 description = "Sustainability Measurement Agent - A tool for collecting and analyzing sustainability metrics in cloud native enviroments."
 authors = [
