@@ -80,6 +80,10 @@ class RunData:
             "duration",
             "treatment_duration",
         ]
+        
+class TriggerFunction(Protocol):
+    def __call__(self) -> Optional[dict]:
+        pass
 
 class SustainabilityMeasurementAgent(object):
 
@@ -159,8 +163,7 @@ class SustainabilityMeasurementAgent(object):
             dataframes.append(df)
         return dataframes
     
-    def observe_once(self, runData: RunData) -> None:
-        queries = self.config.measurement_queries()
+    def observe_once(self, runData: RunData, extras: Optional[dict] = None) -> None:
         if runData.endTime is None or runData.treatment_start is None or runData.treatment_end is None:
             raise ValueError("endTime, treatment_start, and treatment_end must be defined for observe_once")
         
@@ -169,13 +172,15 @@ class SustainabilityMeasurementAgent(object):
         self.logger.info(f"Created report subdirectory {location}.")
         filename_template = Template(self.config.report["filename"])
         
+        queries = self.config.measurement_queries()
+        
         for name, measurement in queries.items():   
             try:
                 self.logger.info(f"Observing measurement: {name}")
                 df = measurement.observe(start=runData.startTime, end=runData.endTime)
                 df = measurement.label(treatment_start=runData.treatment_start.timestamp(), treatment_end=runData.treatment_end.timestamp(),
                                         label_column="treatment", label="Treatment")
-                filename = filename_template.safe_substitute(runData.to_dict({"name": name})
+                filename = filename_template.safe_substitute(runData.to_dict({"name": name} | (extras or {}))
                 )
                 #TODO: support different report formats
                 full_path = os.path.join(location, filename)
@@ -197,7 +202,6 @@ class SustainabilityMeasurementAgent(object):
         
         self.logger.info(f"Observation window: left={window.left}s, right={window.right}s, duration={window.duration}s") # type: ignore
 
-       
 
         sleep(window.left)
         self.notify_observers("onStart")
@@ -224,22 +228,27 @@ class SustainabilityMeasurementAgent(object):
         self.observe_once(run_data)
 
     
-    def _run_trigger(self,trigger: Callable) -> None:
+    def _run_trigger(self,trigger: TriggerFunction) -> None:
         startTime = datetime.datetime.now()
         runHash = self.make_run_hash(startTime)
         window = self.config.observation.window
         if window is not None:
             sleep(window.left)
         self.notify_observers("onStart")
+        
         treatment_start = datetime.datetime.now()
-        trigger()
+        
+        meta = trigger()
+        
         treatment_end = datetime.datetime.now()
         self.logger.info(f"Treatment duration: {treatment_end - treatment_start}")
         self.notify_observers("onEnd")
+        
         if window is not None:
             sleep(window.right)
         self.notify_observers("onRight")
         endTime = datetime.datetime.now()
+        
         self.logger.info(f"Total observation duration: {endTime - startTime}")
         run_data = RunData(
             startTime=startTime,
@@ -248,18 +257,19 @@ class SustainabilityMeasurementAgent(object):
             treatment_end=treatment_end,
             runHash=runHash
         )
-        self.observe_once(run_data)
+        
+        self.observe_once(run_data, extras=meta)
         
         
     
-    def _run_continuous(self,trigger: Callable) -> None:
+    def _run_continuous(self,trigger: TriggerFunction) -> None:
         startTime = datetime.datetime.now()
         runHash = self.make_run_hash(startTime)
         self.logger.info(f"Observation mode: {self.config.observation.mode}")
         self.notify_observers("onStart")
         self.observe_continueously()
         
-        trigger()
+        _ = trigger()
        
         endTime = datetime.datetime.now()
         self.logger.info(f"Total observation duration: {endTime - startTime}")
@@ -267,7 +277,7 @@ class SustainabilityMeasurementAgent(object):
         
         
 
-    def run(self, trigger: Optional[Callable] = None) -> None:
+    def run(self, trigger: Optional[TriggerFunction] = None) -> None:
         if self.config.observation.mode == "timer":
             self._run_timer()
         elif self.config.observation.mode == "trigger":
