@@ -150,17 +150,19 @@ class SustainabilityMeasurementAgent(object):
         location = self._get_location_path(meta=meta)
         filename_template = Template(self.config.report["filename"])
         from glob import glob
+        
+        fmeta = {k: "*" for k in filename_template.get_identifiers()}
+        filename_pattern = filename_template.safe_substitute(fmeta)
+        
+        #TODO: idealy we would look at all defined measurmentes and create layer, wise dataframes,  although this could be something the users could do themselves?
+        
         dataframes: List[pd.DataFrame] = []
-        
-        
-        filename_pattern = filename_template.safe_substitute(meta | {"name": "*"})
-        
-        
         for fname in glob(os.path.join(location, filename_pattern)):
             self.logger.info(f"Loading measurement from {fname}")
             #TODO : support different report formats
             df = pd.read_csv(fname, index_col=0, parse_dates=True)
             dataframes.append(df)
+            
         return dataframes
     
     def observe_once(self, runData: RunData, extras: Optional[dict] = None) -> None:
