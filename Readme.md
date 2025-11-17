@@ -1,6 +1,6 @@
 # Sustainability Measurements Agent (SMA)
 
-![PyPI - Version](https://img.shields.io/pypi/v/sustainability-measurement-agent) | [![Upload Python Package](https://github.com/ISE-TU-Berlin/sustainability-measurement-agent/actions/workflows/python-publish.yml/badge.svg)](https://github.com/ISE-TU-Berlin/sustainability-measurement-agent/actions/workflows/python-publish.yml)
+[![PyPI - Version](https://img.shields.io/pypi/v/sustainability-measurement-agent)](https://pypi.org/project/sustainability-measurement-agent/) | [![Upload Python Package](https://github.com/ISE-TU-Berlin/sustainability-measurement-agent/actions/workflows/python-publish.yml/badge.svg)](https://github.com/ISE-TU-Berlin/sustainability-measurement-agent/actions/workflows/python-publish.yml)
 
 SMA is an open-source tool designed to help deploy, collect and report sustainability measurements on cloud-native applications. It is not itself a measurement tool, but rather a framework to orchestrate, combine and aggregate results from emerging suite of sustainability measurement tools. 
 

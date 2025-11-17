@@ -7,7 +7,7 @@ packages = ["sma"]
 
 [project]
 name = "sustainability-measurement-agent"
-version = "0.1.0"
+version = "0.1.5"
 description = "Sustainability Measurement Agent - A tool for collecting and analyzing sustainability metrics in cloud native enviroments."
 authors = [
     { name = "Sebastian Werner", email = "werner@tu-berlin.de" }
