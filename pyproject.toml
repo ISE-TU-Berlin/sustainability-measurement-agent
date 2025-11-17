@@ -12,7 +12,7 @@ description = "Sustainability Measurement Agent - A tool for collecting and anal
 authors = [
     { name = "Sebastian Werner", email = "werner@tu-berlin.de" }
 ]
-readme = "README.md"
+readme = { file = "Readme.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }
 requires-python = ">=3.8"
 keywords = ["sustainability", "measurements", "agent"]
