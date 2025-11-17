@@ -13,6 +13,7 @@ numpy = "*"
 [dev-packages]
 pyproject-pipenv = "*"
 build = "*"
+ipykernel = "*"
 
 [requires]
 python_version = "3.13"

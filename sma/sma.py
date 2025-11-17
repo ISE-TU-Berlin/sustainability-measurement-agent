@@ -1,13 +1,17 @@
 
 from curses import window
+from dataclasses import dataclass
 import datetime
 from logging import Logger, getLogger
 from time import sleep
-from typing import Optional, Protocol, Callable
+from typing import List, Optional, Protocol, Callable
 from sma.config import Config
 from sma.service import ServiceException
 import os
 from string import Template
+import pandas as pd
+import random
+import hashlib
 
 
 #TODO: we implement an observer pattern for setup, left, duration, right and teardown
@@ -30,6 +34,52 @@ class SMAObserver(Protocol):
 
     def onTeardown(self) -> None:
         pass
+
+
+@dataclass
+class RunData:
+    startTime: datetime.datetime
+    endTime: Optional[datetime.datetime]
+    treatment_start: Optional[datetime.datetime]
+    treatment_end: Optional[datetime.datetime]
+    runHash: str
+    
+    def duration(self) -> Optional[datetime.timedelta]:
+        if self.endTime is None:
+            return None
+        return self.endTime - self.startTime
+    
+    def treatment_duration(self) -> Optional[datetime.timedelta]:
+        if self.treatment_start is None or self.treatment_end is None:
+            return None
+        return self.treatment_end - self.treatment_start
+    
+    def to_dict(self, kwargs: Optional[dict]) -> dict:
+        meta ={
+            "startTime": self.startTime.strftime("%Y_%m_%d_%H_%M_%S"),
+            "endTime": self.endTime.strftime("%Y_%m_%d_%H_%M_%S") if self.endTime is not None else "",
+            "treatment_start": self.treatment_start.strftime("%Y_%m_%d_%H_%M_%S") if self.treatment_start is not None else "",
+            "treatment_end": self.treatment_end.strftime("%Y_%m_%d_%H_%M_%S") if self.treatment_end is not None else "",
+            "runHash": self.runHash,
+            "duration": self.duration().total_seconds() if self.duration() is not None else "", # type: ignore
+            "treatment_duration": self.treatment_duration().total_seconds() if self.treatment_duration() is not None else "", # type: ignore
+        }
+        
+        if kwargs:
+            meta.update(kwargs)
+        return meta
+    
+    @staticmethod
+    def fields() -> List[str]:
+        return [
+            "startTime",
+            "endTime",
+            "treatment_start",
+            "treatment_end",
+            "runHash",
+            "duration",
+            "treatment_duration",
+        ]
 
 class SustainabilityMeasurementAgent(object):
 
@@ -62,19 +112,59 @@ class SustainabilityMeasurementAgent(object):
 
     def observe_continueously(self) -> None:
         pass
-
     
-    def observe_once(self, startTime: datetime.datetime, endTime: datetime.datetime) -> None:
-        queries = self.config.measurement_queries()
-        location = self.config.report["location"]
+    def make_run_hash(self, startTime: datetime.datetime) -> str:
+        hash_input = f"{startTime.isoformat()}_{random.random()}"
+        return hashlib.sha256(hash_input.encode()).hexdigest()[:8]
+    
+    def _get_location_path(self, meta: dict = {}) -> str:
+        location_template = Template(self.config.report["location"])
+        return location_template.safe_substitute(
+            **meta
+        )
+    
+    def _get_or_make_report_location(self, runData: Optional[RunData] = None) -> str:
+        meta = {}
+        if runData is not None:
+            meta = runData.to_dict(meta)
+            
+        location = self._get_location_path(meta)
+        
         if os.path.exists(location):
             self.logger.info(f"Report location {location} exists.")
         else:
             os.makedirs(location)
             self.logger.info(f"Created report location {location}.")
         
-        location = os.path.join(location, startTime.strftime("%Y-%m-%d_%H-%M-%S"))
-        os.makedirs(location)
+        
+        self.logger.info(f"Created report subdirectory {location}.")
+        return location
+    
+    def load_measurements(self) -> List[pd.DataFrame]:
+        meta = {k:"*" for k in RunData.fields()}
+        
+        location = self._get_location_path(meta=meta)
+        filename_template = Template(self.config.report["filename"])
+        from glob import glob
+        dataframes: List[pd.DataFrame] = []
+        
+        
+        filename_pattern = filename_template.safe_substitute(meta | {"name": "*"})
+        
+        
+        for fname in glob(os.path.join(location, filename_pattern)):
+            self.logger.info(f"Loading measurement from {fname}")
+            #TODO : support different report formats
+            df = pd.read_csv(fname, index_col=0, parse_dates=True)
+            dataframes.append(df)
+        return dataframes
+    
+    def observe_once(self, runData: RunData) -> None:
+        queries = self.config.measurement_queries()
+        if runData.endTime is None or runData.treatment_start is None or runData.treatment_end is None:
+            raise ValueError("endTime, treatment_start, and treatment_end must be defined for observe_once")
+        
+        location = self._get_or_make_report_location(runData)
         
         self.logger.info(f"Created report subdirectory {location}.")
         filename_template = Template(self.config.report["filename"])
@@ -82,12 +172,10 @@ class SustainabilityMeasurementAgent(object):
         for name, measurement in queries.items():   
             try:
                 self.logger.info(f"Observing measurement: {name}")
-                df = measurement.observe(start=startTime, end=endTime)
-                
-                filename = filename_template.safe_substitute(
-                    name=name,
-                    startTime=startTime.strftime("%Y%m%d_%H%M%S"),
-                    endTime=endTime.strftime("%Y%m%d_%H%M%S"),
+                df = measurement.observe(start=runData.startTime, end=runData.endTime)
+                df = measurement.label(treatment_start=runData.treatment_start.timestamp(), treatment_end=runData.treatment_end.timestamp(),
+                                        label_column="treatment", label="Treatment")
+                filename = filename_template.safe_substitute(runData.to_dict({"name": name})
                 )
                 #TODO: support different report formats
                 full_path = os.path.join(location, filename)
@@ -95,13 +183,15 @@ class SustainabilityMeasurementAgent(object):
                 df.to_csv(full_path) #TODO: needs to move to report config
             except ServiceException as e:
                 self.logger.error(f"Error observing measurement {name}: {e}")
-        
+    
 
     def _run_timer(self) -> None:
         window = self.config.observation.window
         assert window is not None, "Observation window must be defined for timer mode"
         
         startTime = datetime.datetime.now()
+        runHash = self.make_run_hash(startTime)
+        
         self.notify_observers("onLeft")
         self.logger.info(f"Observation mode: {self.config.observation.mode}")
         
@@ -111,8 +201,10 @@ class SustainabilityMeasurementAgent(object):
 
         sleep(window.left)
         self.notify_observers("onStart")
-
+        treatment_start = datetime.datetime.now()
         sleep(window.duration)
+        treatment_end = datetime.datetime.now()
+        self.logger.info(f"Treatment duration: {treatment_end - treatment_start}")
         self.notify_observers("onEnd")
         sleep(window.right)
         self.notify_observers("onRight")
@@ -121,33 +213,58 @@ class SustainabilityMeasurementAgent(object):
         totalDuration = endTime - startTime
         self.logger.info(f"Total observation duration: {totalDuration}")
         
-        self.observe_once(startTime, endTime)
+        run_data = RunData(
+            startTime=startTime,
+            endTime=endTime,
+            treatment_start=treatment_start,
+            treatment_end=treatment_end,
+            runHash=runHash
+        )
+        
+        self.observe_once(run_data)
 
     
     def _run_trigger(self,trigger: Callable) -> None:
         startTime = datetime.datetime.now()
+        runHash = self.make_run_hash(startTime)
         window = self.config.observation.window
         if window is not None:
             sleep(window.left)
         self.notify_observers("onStart")
+        treatment_start = datetime.datetime.now()
         trigger()
+        treatment_end = datetime.datetime.now()
+        self.logger.info(f"Treatment duration: {treatment_end - treatment_start}")
         self.notify_observers("onEnd")
         if window is not None:
             sleep(window.right)
         self.notify_observers("onRight")
         endTime = datetime.datetime.now()
         self.logger.info(f"Total observation duration: {endTime - startTime}")
-        self.observe_once(startTime, endTime)
+        run_data = RunData(
+            startTime=startTime,
+            endTime=endTime,
+            treatment_start=treatment_start,
+            treatment_end=treatment_end,
+            runHash=runHash
+        )
+        self.observe_once(run_data)
         
         
     
     def _run_continuous(self,trigger: Callable) -> None:
-        
+        startTime = datetime.datetime.now()
+        runHash = self.make_run_hash(startTime)
         self.logger.info(f"Observation mode: {self.config.observation.mode}")
         self.notify_observers("onStart")
         self.observe_continueously()
+        
         trigger()
+       
+        endTime = datetime.datetime.now()
+        self.logger.info(f"Total observation duration: {endTime - startTime}")
         self.notify_observers("onEnd")
+        
         
 
     def run(self, trigger: Optional[Callable] = None) -> None:

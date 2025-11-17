@@ -4,6 +4,30 @@
 
 SMA is an open-source tool designed to help deploy, collect and report sustainability measurements on cloud-native applications. It is not itself a measurement tool, but rather a framework to orchestrate, combine and aggregate results from emerging suite of sustainability measurement tools. 
 
+
+## Capabilities (planned)
+ - Configuration driven deployment and operation
+ - Support for multiple measurement tools
+   - Kepler
+   - Scraphandre
+   - cAdvisor
+   - KubeWatt
+   - Cloud Provider APIs (AWS, GCP, Azure)
+   - KubeMetrics
+ - Support for multiple scenarios
+   - Continuous monitoring and reporting
+   - Experiment Measurements / Benchmarking
+   - Ad-hoc measurements
+   - Programmatic measurements via API
+   - Kubernetes Operator
+ - Multiple report formats
+   - CSV
+   - HDF5
+ - Post processing and aggregation
+   - Pandas
+   - Grafana Dashboards
+
+
 ## Use / Install
 
 ```bash
@@ -34,29 +58,25 @@ $ python main.py
 $ Hit Enter to to Stop Measuring...
 ``` 
 
-## Capabilities (planned)
- - Configuration driven deployment and operation
- - Support for multiple measurement tools
-   - Kepler
-   - Scraphandre
-   - cAdvisor
-   - KubeWatt
-   - Cloud Provider APIs (AWS, GCP, Azure)
-   - KubeMetrics
- - Support for multiple scenarios
-   - Continuous monitoring and reporting
-   - Experiment Measurements / Benchmarking
-   - Ad-hoc measurements
-   - Programmatic measurements via API
-   - Kubernetes Operator
- - Multiple report formats
-   - CSV
-   - HDF5
- - Post processing and aggregation
-   - Pandas
-   - Grafana Dashboards
+### Configuration
+SMA is configured via YAML files. See the `examples/` folder for sample configurations. The configuration allows to specify which measurement tools to use, how to deploy them, and how to collect and report the measurements.
 
-## Contributing
+<!-- TODO: Add more detailed configuration documentation -->
+
+### API 
+
+<!-- TODO: Add API documentation -->
+
+## Development
+
+1. Install pipenv: `pip install pipenv`
+2. Install dependencies: `pipenv install --dev`
+3. Activate virtual environment: `pipenv shell`
+4. Do your thing. Eventually with tests.
+5. If you add new dependencies, run `pipenv lock --pre` to update the `Pipfile.lock`.
+6. If you want to release a new version, update the version in `pyproject.toml` and run `pipenv run pyproject-pipenv --fix` and commit the changes.
+7. Tag your release: `git tag vx.y.z` and `git push --tags`
+8. Create a new release on GitHub, this will trigger the upload to PyPI via GitHub Actions.
 
 ### Acknowledgements
 

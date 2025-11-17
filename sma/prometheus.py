@@ -359,7 +359,7 @@ class ResponseVariable(abc.ABC):
         treatment_end: float,
         label_column: str,
         label: str,
-    ) -> None:
+    ) -> pd.DataFrame:
         pass
 
     @abc.abstractmethod
@@ -377,6 +377,7 @@ class PrometheusMetric(ResponseVariable):
                  query: str, 
                  layer: Optional[str] = None, 
                  query_type: Optional[str] = "aggregate", 
+                 unit: Optional[str] = None,
                  step: Optional[int] = 60, 
                  targets: Optional[List[ObservationTarget]] = None
         ):
@@ -389,6 +390,7 @@ class PrometheusMetric(ResponseVariable):
         """User-supplied prometheus metric name"""
         self.layer = layer
         self.query_type = query_type
+        self.unit = unit
         self.step = step
         """User-supplied prometheus step size"""
         self.target = targets if targets is not None else []
@@ -405,7 +407,7 @@ class PrometheusMetric(ResponseVariable):
             treatment_end: float,
             label_column: str,
             label: str,
-    ) -> None:
+    ) -> pd.DataFrame:
         """
         Label a Prometheus dataframe. Note that Prometheus returns timestamps in seconds as a float
 
@@ -420,7 +422,11 @@ class PrometheusMetric(ResponseVariable):
         predicate = self.data["timestamp"].between(treatment_start, treatment_end)
         
         self.data[label_column] = np.where(predicate, label, "NoTreatment")
+        
+        return self.data
 
+
+    #unsued, deprecated?
     @staticmethod
     def _instant_query_to_df(json_data):
         """Returns a pandas dataframe from prometheus instant query json response"""
@@ -483,6 +489,9 @@ class PrometheusMetric(ResponseVariable):
             dataframe.set_index(
                 pd.to_datetime(dataframe.timestamp, utc=True, unit="s"), inplace=True
             )
+            dataframe["layer"] = self.layer
+            dataframe["unit"] = self.unit
+            
             return dataframe
         except (IndexError, KeyError) as exc:
             raise ServiceException(

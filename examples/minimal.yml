@@ -19,17 +19,20 @@ sma:
         layer: pod # layer of the measurment (pod, node, container)
         query: sum(rate(container_cpu_usage_seconds_total{namespace="${namespace}"}[1m]))
         step: 30 # sampling step in seconds
+        unit: cpu_time_seconds # unit of the measurment
         target:
           - all # target name defined in the observation section (all for all targets)
     - system_CPU_1:
         type: raw
         query: container_cpu_usage_seconds_total{namespace="${namespace}"}
         step: 30
+        unit: cpu_time_seconds
         target: 
           - suo
     - wall_power:
         type: raw
         query: shelly_apower_watts
+        unit: watts
         step: 30
         target:
           - all
@@ -37,12 +40,14 @@ sma:
         type: aggregate
         layer: pod
         query: sum by (pod_name) (rate(kepler_container_joules_total{container_namespace="${namespace}"}[1m]))
+        unit: watts
         step: 30
         target:
           - suo
     - pod_power_consumption_kepler_old_watts:
         type: aggregate
         layer: pod
+        unit: watts
         query: sum by (pod_name) (rate(kepler_container_core_joules_total[1m]))
         step: 30
         target:
@@ -50,7 +55,8 @@ sma:
     - node_power_consumption_scaphandre:
         type: raw
         layer: node
-        query: scaph_host_power_microwatts
+        unit: watts
+        query: scaph_host_power_microwatts / 1e6
         step: 30
         target:
           - all
@@ -58,6 +64,7 @@ sma:
         type: aggregate
         layer: node
         query: sum by (node) (rate(kepler_node_cpu_joules_total[1m]))
+        unit: watts
         step: 30
         target:
           - suo
@@ -65,6 +72,7 @@ sma:
         type: raw
         layer: container
         query: kube_pod_container_info{namespace="${namespace}"}
+        unit: metadata
         step: 30
         target:
           - suo
@@ -72,10 +80,11 @@ sma:
         type: raw
         layer: pod
         query: kepler_process_joules_total{container_namespace="${namespace}"}
+        unit: joules
         step: 30
         target:
           - suo
   report:
     format: csv
-    location: reports/
+    location: reports/${startTime}_${runHash}/
     filename: "${name}_${startTime}.csv"

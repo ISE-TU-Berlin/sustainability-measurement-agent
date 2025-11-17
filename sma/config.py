@@ -71,6 +71,7 @@ class MeasurementConfig:
     query: str
     step: int = 60
     layer: Optional[str] = None
+    unit: Optional[str] = None
     target_names: Optional[List[str]] = None
 
     def to_prometheus_query(self, name: str, client: Prometheus, named_targets: Dict[str, ObservationTarget]) -> PrometheusMetric:
@@ -90,6 +91,7 @@ class MeasurementConfig:
             name=name,
             query=self.query,
             layer=self.layer,
+            unit=self.unit,
             query_type=self.type,
             step=self.step,
             targets=targets,
@@ -199,6 +201,7 @@ class Config:
             body = m[name] or {}
             mtype = body.get("type", "aggregate")
             layer = body.get("layer")
+            unit = body.get("unit")
             query = body.get("query")
             if not query:
                 raise ValueError(f"measurement '{name}' missing required 'query'")
@@ -206,7 +209,7 @@ class Config:
             target_names = body.get("target") or body.get("targets") or []
             if isinstance(target_names, str):
                 target_names = [target_names]
-            measurements[name] = MeasurementConfig(name=name, type=mtype, query=query, step=step, layer=layer, target_names=target_names)
+            measurements[name] = MeasurementConfig(name=name, type=mtype, query=query, step=step, layer=layer, unit=unit, target_names=target_names)
 
         report = sma.get("report", {}) or {}
 
