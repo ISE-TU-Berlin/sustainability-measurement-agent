@@ -457,7 +457,7 @@ class PrometheusMetric(ResponseVariable):
             except (TypeError, ValueError):
                 return metric_value
 
-    def _range_query_to_df(self, json_data, metric_column_name) -> Optional[pd.DataFrame]:
+    def _range_query_to_df(self, json_data) -> Optional[pd.DataFrame]:
         """
         Return pandas dataframe from prometheus range query json response
 
@@ -472,7 +472,7 @@ class PrometheusMetric(ResponseVariable):
             
             check = results[0]
             columns = list(check["metric"].keys())
-            columns += ["timestamp", metric_column_name, self.name]
+            columns += ["timestamp", self.name]
             rows = []
             for result in results:
                 for timestamp, value in result["values"]:
@@ -481,7 +481,6 @@ class PrometheusMetric(ResponseVariable):
                         {
                             **result["metric"],
                             "timestamp": timestamp,
-                            metric_column_name: parsed_value,
                             self.name: parsed_value,
                         }
                     )
@@ -516,7 +515,7 @@ class PrometheusMetric(ResponseVariable):
             step=self.step,
         )
         self.data = self._range_query_to_df(
-            prometheus_metrics, metric_column_name=self.name
+            prometheus_metrics
         )
         
         if self.data is None:

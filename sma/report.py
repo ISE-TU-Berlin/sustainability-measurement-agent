@@ -1,31 +1,18 @@
 
 
 import json
+from logging import getLogger
 import os
 from typing import Any, Dict, List, Optional
 from sma.config import Config, MeasurementConfig
 import datetime
 from dataclasses import dataclass
 import pandas as pd
-
+from glob import glob
 from string import Template
 
 from sma.service import ServiceException
 
-def matchFromTemplate(template: Template, string: str) -> Optional[Dict[str, str]]:
-    """
-    Matches a string against a template and returns a dictionary of the matched variables.
-    """
-    import re
-
-    template.get_identifiers()
-    regex_pattern = {k: r"(.*)" for k in template.get_identifiers()}
-    pattern = template.safe_substitute(regex_pattern)
-    pattern = re.compile(pattern)
-    match = pattern.fullmatch(string)
-    if match:
-        return match.groupdict()
-    return None
 
 
 @dataclass
@@ -83,6 +70,7 @@ class Report():
         self.config = config
         self.enviroment = None # We should store meta data about the pods and nodes here
         self.data = data
+        self.logger = getLogger("sma.Report")
     
     def set_data(self, name: str, dataframe: pd.DataFrame) -> None:
         self.data[name] = dataframe    
@@ -98,6 +86,14 @@ class Report():
             if name in self.data:
                 return self.data[name]
             raise
+    
+    def __getitem__(self, item) -> Any:
+        if item not in self.data:
+            raise KeyError(f"Measurement {item} not found in report data.")
+        return self.data[item]
+    
+    def measurments(self) -> List[str]:
+        return list(self.config.measurements.keys())
     
     #TODO: move the output, loading into a seperate class that handles reports
     @staticmethod
@@ -147,14 +143,19 @@ class Report():
             
                 
     @staticmethod
-    def load_from_config(config: Config) -> "Report":
+    def load_from_config(config: Config) -> List["Report"]:
         
         meta = {k:"*" for k in RunData.fields()}
         
         location = Report._get_location_path(config, meta=meta)
+        reports = []
+        for dirpath in glob(location):
+            reports.append(Report.load_from_location(dirpath, config))
+        return reports  
         
-        
-        #TODO: idealy we would look at all defined measurmentes and create layer, wise dataframes,  although this could be something the users could do themselves?
+    
+    @staticmethod
+    def load_from_location(location: str, config: Config) -> "Report":
         runData = None
         if os.path.exists(os.path.join(location, "run_metadata.json")):
             with open(os.path.join(location, "run_metadata.json"), "r") as f:
@@ -171,20 +172,28 @@ class Report():
         #TODO: read runData from files
         data = {}
         filename_template = Template(config.report["filename"])
-        from glob import glob
+       
         
         fmeta = {k: "*" for k in filename_template.get_identifiers()}
         filename_pattern = filename_template.safe_substitute(fmeta)
+        
+        metric_names = set(config.measurements.keys())
         
         for fname in glob(os.path.join(location, filename_pattern)):
             #TODO : support different report formats
             df = pd.read_csv(fname, index_col=0, parse_dates=True)
             #Extract name from filename
-            template = matchFromTemplate(filename_template, os.path.basename(fname))
-            if template and "name" in template:
-                data[template["name"]] = df
-            else:
+            #check if we find a matching measurement
+            matched = False
+            for metric_name in metric_names:
+                if metric_name in fname:
+                    data[metric_name] = df
+                    matched = True
+                    break
+            if not matched:
                 raise ValueError(f"Could not extract measurement name from filename {fname}")
+            
+            
             
         return Report(
             run_data=runData,
