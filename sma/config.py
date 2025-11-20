@@ -107,6 +107,8 @@ class Config:
         self.report = report
         # runtime caches
         self._named_targets: Dict[str, ObservationTarget] = {}
+        
+        self.config_file : str = ""
 
     @classmethod
     def from_file(cls, path: str) -> "Config":
@@ -120,10 +122,10 @@ class Config:
 
         with open(path, "r", encoding="utf-8") as fh:
             raw = yaml.safe_load(fh)
-        return cls.from_dict(raw)
+        return cls.from_dict(raw, config_file=path)
 
     @classmethod
-    def from_dict(cls, raw: Dict[str, Any]) -> "Config":
+    def from_dict(cls, raw: Dict[str, Any], config_file: Optional[str] = None) -> "Config":
         if not isinstance(raw, dict) or "sma" not in raw:
             raise ValueError("Invalid configuration: expected top-level 'sma' key")
 
@@ -215,6 +217,7 @@ class Config:
 
         cfg = cls(version=version, services=services_cfg, observation=observation, measurements=measurements, report=report)
         cfg._named_targets = named_targets
+        cfg.config_file = config_file if config_file else ""
         return cfg
 
     def prometheus_client(self) -> Optional[Prometheus]:
@@ -231,4 +234,9 @@ class Config:
         for name, m in self.measurements.items():
             out[name] = m.to_prometheus_query(name=name, client=client, named_targets=self._named_targets)
         return out
-
+    
+    def create_measurement_query(self, measurement: MeasurementConfig) -> PrometheusMetric:
+        client = self.prometheus_client()
+        if client is None:
+            raise RuntimeError("no prometheus service configured")
+        return measurement.to_prometheus_query(name=measurement.name, client=client, named_targets=self._named_targets)

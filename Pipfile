@@ -4,11 +4,11 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-requests = ">=2.32.4"
 kubernetes = "*"
 pyyaml = "*"
 pandas = "*"
 numpy = "*"
+requests = "*"
 
 [dev-packages]
 pyproject-pipenv = "*"
@@ -16,4 +16,4 @@ build = "*"
 ipykernel = "*"
 
 [requires]
-python_version = "3.13"
+python_version = "3.9"

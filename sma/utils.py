@@ -7,6 +7,7 @@ Connection: Utility functions are used across different modules for common tasks
 
 import os
 import re
+import string
 from typing import Callable
 from datetime import datetime
 from datetime import timezone
@@ -68,44 +69,19 @@ def humanize_utc_timestamp(timestamp):
     return datetime.utcfromtimestamp(timestamp)
 
 
-def add_env_variable(compose_file_path, service_name, variable_name, variable_value):
-    """Add an environment variable with a given value to a service in a Docker Compose file"""
-    with open(compose_file_path, "r") as file:
-        compose_dict = yaml.safe_load(file)
 
-    if service_name not in compose_dict["services"]:
-        raise ValueError(f"Service {service_name} not found in Docker Compose file")
-
-    if "environment" not in compose_dict["services"][service_name]:
-        compose_dict["services"][service_name]["environment"] = []
-
-    environment = compose_dict["services"][service_name]["environment"]
-    exists = False
-    if isinstance(environment, list):
-        for idx, env_var in enumerate(environment):
-            if env_var.startswith(f"{variable_name}="):
-                environment[idx] = f"{variable_name}={variable_value}"
-                exists = True
-        if not exists:
-            environment.append(f"{variable_name}={variable_value}")
-    else:
-        raise ValueError("Environment field for %s is not a list" % service_name)
-
-    with open(compose_file_path, "w") as file:
-        yaml.safe_dump(compose_dict, file)
-
-
-def remove_env_variable(compose_file_path, service_name, variable_name, variable_value):
-    """Remove an environment variable from a service in a Docker Compose file"""
-    with open(compose_file_path, "r") as file:
-        compose_dict = yaml.safe_load(file)
-
-    if service_name not in compose_dict["services"]:
-        raise ValueError(f"Service {service_name} not found in Docker Compose file")
-
-    if "environment" in compose_dict["services"][service_name]:
-        idx = compose_dict["services"][service_name]["environment"].index(f"{variable_name}={variable_value}")
-        compose_dict["services"][service_name]["environment"].remove(idx)
-
-    with open(compose_file_path, "w") as file:
-        yaml.safe_dump(compose_dict, file)
+def get_identifiers_of_template(template: string.Template) -> list[str]:
+        ids = []
+        for mo in template.pattern.finditer(template.template):
+            named = mo.group('named') or mo.group('braced')
+            if named is not None and named not in ids:
+                # add a named group only the first time it appears
+                ids.append(named)
+            elif (named is None
+                and mo.group('invalid') is None
+                and mo.group('escaped') is None):
+                # If all the groups are None, there must be
+                # another group we're not expecting
+                raise ValueError('Unrecognized named group in pattern',
+                    template.pattern)
+        return ids

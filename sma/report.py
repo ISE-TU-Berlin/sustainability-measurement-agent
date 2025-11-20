@@ -4,6 +4,7 @@ import json
 from logging import getLogger
 import os
 from typing import Any, Dict, List, Optional
+from sma import utils
 from sma.config import Config, MeasurementConfig
 import datetime
 from dataclasses import dataclass
@@ -141,6 +142,12 @@ class Report():
         with open(os.path.join(location, filename), "w") as f:
             json.dump(self.run_data.to_dict(extras or {}), f, indent=4)
             
+        if self.config.config_file:
+            #Copy config file to report location
+            import shutil
+            shutil.copy2(self.config.config_file, os.path.join(location, "config.yaml"))
+            self.logger.info(f"Copied config file {self.config.config_file} to report location.")
+            
                 
     @staticmethod
     def load_from_config(config: Config) -> List["Report"]:
@@ -174,7 +181,7 @@ class Report():
         filename_template = Template(config.report["filename"])
        
         
-        fmeta = {k: "*" for k in filename_template.get_identifiers()}
+        fmeta = {k: "*" for k in utils.get_identifiers_of_template(filename_template)}
         filename_pattern = filename_template.safe_substitute(fmeta)
         
         metric_names = set(config.measurements.keys())

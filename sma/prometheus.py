@@ -72,7 +72,8 @@ class Prometheus(ServiceClient):
         
         # first we apply python string templating to the metric name
         metric_template = Template(metric_name)
-        temp_keys = metric_template.get_identifiers()
+        temp_keys = utils.get_identifiers_of_template(metric_template)
+        
         
         metric_filters = {k: v for k, v in label_dict.items() if k not in temp_keys}
         template_filters = {k: v for k, v in label_dict.items() if k in temp_keys}

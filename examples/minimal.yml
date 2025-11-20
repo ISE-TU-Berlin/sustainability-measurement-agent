@@ -68,14 +68,6 @@ sma:
         step: 30
         target:
           - suo
-    - container_info:
-        type: raw
-        layer: container
-        query: kube_pod_container_info{namespace="${namespace}"}
-        unit: metadata
-        step: 30
-        target:
-          - suo
     - process_power_consumption:
         type: raw
         layer: pod
@@ -87,4 +79,4 @@ sma:
   report:
     format: csv
     location: reports/${startTime}_${runHash}/
-    filename: "${name}_${startTime}.csv"
+    filename: "${name}.csv" #${name} is mandetory

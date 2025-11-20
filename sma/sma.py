@@ -4,8 +4,10 @@ from dataclasses import dataclass
 import datetime
 from logging import Logger, getLogger
 from time import sleep
-from typing import List, Optional, Protocol, Callable
+from typing import Dict, List, Optional, Protocol, Callable
+from sma.prepared_queries import prepared_queries
 from sma.config import Config, MeasurementConfig
+from sma.prometheus import PrometheusMetric
 from sma.report import Report, RunData
 from sma.service import ServiceException
 import os
@@ -48,6 +50,14 @@ class SustainabilityMeasurementAgent(object):
         self.config = config
         self.logger: Logger = getLogger("sma.agent")
         self.observers: list[SMAObserver] = observers
+        
+        #TODO: add some meta data collection quries, so that we know about pods, nodes, cluster, per measurment.
+        self.metadata_queries: Dict[str, PrometheusMetric] = {}
+        
+        self.metadata_queries["node_infos"] = config.create_measurement_query(prepared_queries["node_infos"])
+        self.metadata_queries["pod_infos"] = config.create_measurement_query(prepared_queries["pod_infos"])
+        self.metadata_queries["node_metadata"] = config.create_measurement_query(prepared_queries["node_metadata"])
+        self.metadata_queries["container_infos"] = config.create_measurement_query(prepared_queries["container_infos"])
 
         self.notify_observers("onSetup")
 
@@ -98,6 +108,14 @@ class SustainabilityMeasurementAgent(object):
             except ServiceException as e:
                 self.logger.error(f"Error observing measurement {name}: {e}")
 
+        for name, measurement in self.metadata_queries.items():
+            try:
+                self.logger.info(f"Observing metadata measurement: {name}")
+                df = measurement.observe(start=runData.startTime, end=runData.endTime)
+                rep.set_data(name, df)
+            except ServiceException as e:
+                self.logger.error(f"Error observing metadata measurement {name}: {e}")
+        
         rep.persist(extras=extras)
 
     def _run_timer(self) -> None:
