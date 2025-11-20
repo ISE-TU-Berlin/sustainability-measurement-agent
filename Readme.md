@@ -60,8 +60,12 @@ $ Hit Enter to to Stop Measuring...
 
 ### Architecture and Lifecycle
 
+SMA follows a simple lifecycle:
+[![SMA Lifecycle](docs/lifecycle.svg)](docs/lifecycle.svg)
 
+Fully driven by configuration files, SMA connects to external services (e.g., Prometheus), deploys measurement tools (e.g., Kepler), and once instrcuted via the API (`run()`), starts the observation according to the configured mode (trigger, timer, continuous). Finally, SMA collects the measurement data, generates reports, and tears down any deployed infrastructure (if configured to do so).
 
+SMA exposes an observer API (`SMAObserver`), which allows to hook into the lifecycle events (see the diagram) to extend SMA's functionality programmatically, or to integrate into experiment frameworks.
 
 ### Configuration
 

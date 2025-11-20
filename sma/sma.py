@@ -202,6 +202,15 @@ class SustainabilityMeasurementAgent(object):
             raise ValueError(f"Unknown observation mode: {self.config.observation.mode}")
     
 
+    def deploy(self) -> None:
+        raise NotImplementedError("Deployment is not yet implemented.")
+    
+    def undeploy(self) -> None:
+        raise NotImplementedError("Undeployment is not yet implemented.")
+    
+    def verify_deployment(self) -> bool:
+        raise NotImplementedError("Deployment verification is not yet implemented.")
+
     def teardown(self) -> None:
         self.notify_observers("onTeardown")
         #TODO: clean up clients, connections, etc.
