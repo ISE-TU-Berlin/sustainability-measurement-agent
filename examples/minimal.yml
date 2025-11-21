@@ -78,5 +78,5 @@ sma:
           - suo
   report:
     format: csv
-    location: reports/${startTime}_${runHash}/
-    filename: "${name}.csv" #${name} is mandetory
+    location: reports/testing/
+    filename: "${startTime}_${runHash}/${name}.csv" #${name} is mandetory

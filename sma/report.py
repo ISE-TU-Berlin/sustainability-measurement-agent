@@ -6,6 +6,7 @@ import os
 from typing import Any, Dict, List, Optional
 from sma import utils
 from sma.config import Config, MeasurementConfig
+from sma.prepared_queries import prepared_queries
 import datetime
 from dataclasses import dataclass
 import pandas as pd
@@ -57,6 +58,9 @@ class RunData:
             "treatment_duration",
         ]
         
+#TODO: use default enviroment metadata (pods, nodes, cluster info) to offer specific functions, e.g., map pods to node, map containers to pods, etc. 
+#TODO: get easy metadata per pod/node/contianer, e.g., limits, cpu_max, mem_max, other cababilities...
+
 class Report():
     """
     Report class contains the data and metadata for collected measurements.
@@ -134,6 +138,8 @@ class Report():
             )
             #TODO: support different report formats
             full_path = os.path.join(location, filename)
+            os.makedirs(os.path.dirname(full_path), exist_ok=True) # allow nested dirs..
+            #XXX: any relative path (e.g., ../../)would be a security and usability issue..
             self.logger.info(f"Writing report to {full_path}")        
             measurement.to_csv(full_path) #TODO: needs to move to report config
         
@@ -184,7 +190,7 @@ class Report():
         fmeta = {k: "*" for k in utils.get_identifiers_of_template(filename_template)}
         filename_pattern = filename_template.safe_substitute(fmeta)
         
-        metric_names = set(config.measurements.keys())
+        metric_names = set(config.measurements.keys()) | set(prepared_queries.keys())
         
         for fname in glob(os.path.join(location, filename_pattern)):
             #TODO : support different report formats
