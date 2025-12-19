@@ -1,64 +1,43 @@
 
-from curses import window
-from dataclasses import dataclass
 import datetime
+import hashlib
+import random
 from logging import Logger, getLogger
 from time import sleep
-from typing import Dict, List, Optional, Protocol, Callable
-from sma.prepared_queries import prepared_queries
-from sma.config import Config, MeasurementConfig
-from sma.prometheus import PrometheusMetric
-from sma.report import Report, RunData
+from typing import Optional
+
+from sma.config import Config
+from sma.model import (
+    SMAObserver, TriggerFunction, EnvironmentCollector,
+    SMARun, SMASession, ReportMetadata
+)
+from sma.report import Report
 from sma.service import ServiceException
-import os
-from string import Template
-import pandas as pd
-import random
-import hashlib
 
 
 #TODO: we implement an observer pattern for setup, left, duration, right and teardown
 
-class SMAObserver(Protocol):
-    def onSetup(self) -> None:
-        pass
-
-    def onLeft(self) -> None:
-        pass
-
-    def onStart(self) -> None:
-        pass
-
-    def onEnd(self) -> None:
-        pass
-
-    def onRight(self) -> None:
-        pass
-
-    def onTeardown(self) -> None:
-        pass
 
 
+def make_run_hash(start_time: datetime.datetime) -> str:
+    hash_input = f"{start_time.isoformat()}_{random.random()}"
+    return hashlib.sha256(hash_input.encode()).hexdigest()[:8]
 
-class TriggerFunction(Protocol):
-    def __call__(self) -> Optional[dict]:
-        pass
 
 class SustainabilityMeasurementAgent(object):
 
-    def __init__(self, config: Config, observers: list[SMAObserver] = []) -> None:
+    def __init__(self, config: Config, observers: list[SMAObserver] = [], meta: SMASession = None) -> None:
         self.config = config
         self.logger: Logger = getLogger("sma.agent")
         self.observers: list[SMAObserver] = observers
-        
-        #TODO: add some meta data collection quries, so that we know about pods, nodes, cluster, per measurment.
-        self.metadata_queries: Dict[str, PrometheusMetric] = {}
-        
-        self.metadata_queries["node_infos"] = config.create_measurement_query(prepared_queries["node_infos"])
-        self.metadata_queries["pod_infos"] = config.create_measurement_query(prepared_queries["pod_infos"])
-        self.metadata_queries["node_metadata"] = config.create_measurement_query(prepared_queries["node_metadata"])
-        self.metadata_queries["container_infos"] = config.create_measurement_query(prepared_queries["container_infos"])
+        self.environment_collector: Optional[EnvironmentCollector] = self.config.create_environment_observation()
+        self.session: Optional[SMASession] = None
 
+        if meta is not None:
+            self.setup(meta)
+
+    def setup(self, session:SMASession):
+        self.session = session
         self.notify_observers("onSetup")
 
     def notify_observers(self, event: str):
@@ -67,10 +46,10 @@ class SustainabilityMeasurementAgent(object):
             if callable(method):
                 method()
 
-    def register_observer(self, observer: SMAObserver) -> None:
+    def register_sma_observer(self, observer: SMAObserver) -> None:
         self.observers.append(observer)
 
-    def unregister_observer(self, observer: SMAObserver) -> None:
+    def unregister_sma_observer(self, observer: SMAObserver) -> None:
         self.observers.remove(observer)
     
     def connect(self) -> None:
@@ -81,49 +60,40 @@ class SustainabilityMeasurementAgent(object):
                self.logger.error(f"Service {k} is not reachable.")
                raise ValueError(f"Service {k} is not reachable.")
 
-    def observe_continueously(self) -> None:
-        raise NotImplementedError("Continuous observation mode is not yet implemented.")
-    
-    def make_run_hash(self, startTime: datetime.datetime) -> str:
-        hash_input = f"{startTime.isoformat()}_{random.random()}"
-        return hashlib.sha256(hash_input.encode()).hexdigest()[:8]
-    
-    
-    #TODO: impove interface, to much dependency on report structure
-    def observe_once(self, runData: RunData, extras: Optional[dict] = None) -> None:
-        if runData.endTime is None or runData.treatment_start is None or runData.treatment_end is None:
-            raise ValueError("endTime, treatment_start, and treatment_end must be defined for observe_once")
+    def observe_once(self, run_data: ReportMetadata) -> None:
+        """Observe measurements for a completed run and persist to disk.
         
-        rep = Report(run_data=runData, config=self.config, data={})
-        
+        Args:
+            run_data: ReportMetadata containing timing and run identification data
+        """
+        rep = Report(metadata=run_data, config=self.config, data={}, environment=None)
+
         queries = self.config.measurement_queries()
         
         for name, measurement in queries.items():   
             try:
                 self.logger.info(f"Observing measurement: {name}")
-                df = measurement.observe(start=runData.startTime, end=runData.endTime)
-                df = measurement.label(treatment_start=runData.treatment_start.timestamp(),  treatment_end=runData.treatment_end.timestamp(),
-                label_column="treatment", label="Treatment")
+                #XXX: not a good pattern... should not use knowlalge about internals of measurment..., labeling should happen during observation
+                df = measurement.observe(start=run_data.run.startTime, end=run_data.run.endTime)
+                df = measurement.label(treatment_start=run_data.run.treatment_start.timestamp(), treatment_end=run_data.run.treatment_end.timestamp(),
+                                       label_column="treatment", label="Treatment")
                 rep.set_data(name, df)
             except ServiceException as e:
                 self.logger.error(f"Error observing measurement {name}: {e}")
 
-        for name, measurement in self.metadata_queries.items():
-            try:
-                self.logger.info(f"Observing metadata measurement: {name}")
-                df = measurement.observe(start=runData.startTime, end=runData.endTime)
-                rep.set_data(name, df)
-            except ServiceException as e:
-                self.logger.error(f"Error observing metadata measurement {name}: {e}")
-        
-        rep.persist(extras=extras)
+        if self.environment_collector:
+            env = self.environment_collector.observe_environment(run_data.run)
+            rep.environment = env
+        rep.persist()
 
-    def _run_timer(self) -> None:
+    def _run_with_timer(self) -> None:
+        """Run observation in timer mode with fixed duration windows.
+        """
         window = self.config.observation.window
         assert window is not None, "Observation window must be defined for timer mode"
         
-        startTime = datetime.datetime.now()
-        runHash = self.make_run_hash(startTime)
+        start_time = datetime.datetime.now()
+        run_hash = make_run_hash(start_time)
         
         self.notify_observers("onLeft")
         self.logger.info(f"Observation mode: {self.config.observation.mode}")
@@ -141,24 +111,38 @@ class SustainabilityMeasurementAgent(object):
         sleep(window.right)
         self.notify_observers("onRight")
         
-        endTime = datetime.datetime.now()
-        totalDuration = endTime - startTime
-        self.logger.info(f"Total observation duration: {totalDuration}")
+        end_time = datetime.datetime.now()
+        total_duration = end_time - start_time
+        self.logger.info(f"Total observation duration: {total_duration}")
         
-        run_data = RunData(
-            startTime=startTime,
-            endTime=endTime,
+        run_data = SMARun(
+            startTime=start_time,
+            endTime=end_time,
             treatment_start=treatment_start,
             treatment_end=treatment_end,
-            runHash=runHash
+            runHash=run_hash,
+            user_data={
+                "timer_duration": (treatment_end-treatment_start).total_seconds(),
+            }
         )
         
-        self.observe_once(run_data)
+        self.observe_once(ReportMetadata(
+            session=self.session,
+            run=run_data,
+        ))
 
-    
-    def _run_trigger(self,trigger: TriggerFunction) -> None:
-        startTime = datetime.datetime.now()
-        runHash = self.make_run_hash(startTime)
+    def _run_with_trigger(self, trigger: TriggerFunction) -> None:
+        """Run observation in trigger mode where a function controls the treatment period.
+        
+        Args:
+            trigger: Function that executes the workload and returns file-level metadata
+            location_metadata: Metadata for organizing report location
+        """
+        if self.session is None:
+            raise ValueError("Session must be set before running in trigger mode.")
+
+        start_time = datetime.datetime.now()
+        run_hash = make_run_hash(start_time)
         window = self.config.observation.window
         if window is not None:
             sleep(window.left)
@@ -166,7 +150,7 @@ class SustainabilityMeasurementAgent(object):
         
         treatment_start = datetime.datetime.now()
         
-        meta = trigger()
+        trigger_meta = trigger()
         
         treatment_end = datetime.datetime.now()
         self.logger.info(f"Treatment duration: {treatment_end - treatment_start}")
@@ -175,50 +159,37 @@ class SustainabilityMeasurementAgent(object):
         if window is not None:
             sleep(window.right)
         self.notify_observers("onRight")
-        endTime = datetime.datetime.now()
+        end_time = datetime.datetime.now()
         
-        self.logger.info(f"Total observation duration: {endTime - startTime}")
-        run_data = RunData(
-            startTime=startTime,
-            endTime=endTime,
+        self.logger.info(f"Total observation duration: {end_time - start_time}")
+        run_data = SMARun(
+            startTime=start_time,
+            endTime=end_time,
             treatment_start=treatment_start,
             treatment_end=treatment_end,
-            runHash=runHash
+            runHash=run_hash,
+            user_data=trigger_meta,
         )
         
-        self.observe_once(run_data, extras=meta)
-        
-        
-    
-    def _run_continuous(self,trigger: TriggerFunction) -> None:
-        startTime = datetime.datetime.now()
-        runHash = self.make_run_hash(startTime)
-        self.logger.info(f"Observation mode: {self.config.observation.mode}")
-        self.notify_observers("onStart")
-        self.observe_continueously()
-        
-        _ = trigger()
-       
-        endTime = datetime.datetime.now()
-        self.logger.info(f"Total observation duration: {endTime - startTime}")
-        self.notify_observers("onEnd")
-        
-        
+        self.observe_once(ReportMetadata(
+            session=self.session,
+            run=run_data,
+        ))
 
     def run(self, trigger: Optional[TriggerFunction] = None) -> None:
+        """Execute a measurement run.
+        
+        Args:
+            trigger: Optional function for trigger/continuous modes that returns file-level metadata
+        """
         if self.config.observation.mode == "timer":
-            self._run_timer()
+            self._run_with_timer()
         elif self.config.observation.mode == "trigger":
             if trigger is None:
                 raise ValueError("Trigger function must be provided for trigger mode")
-            self._run_trigger(trigger)
-        elif self.config.observation.mode == "continuous":
-            if trigger is None:
-                raise ValueError("Trigger function must be provided for continuous mode")
-            self._run_continuous(trigger)
+            self._run_with_trigger(trigger)
         else:
             raise ValueError(f"Unknown observation mode: {self.config.observation.mode}")
-    
 
     def deploy(self) -> None:
         raise NotImplementedError("Deployment is not yet implemented.")

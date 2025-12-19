@@ -12,6 +12,8 @@ sma:
     targets:
       - name: suo
         namespace: kubeai
+    environment:
+      collector: prometheus
   measurements:
     # we are using python string templating, you can (and should) specify where additional labels with ${SMA_SELECTORS} otherwise results might be unfiltered
     - system_CPU: # name of the measurment in the report
@@ -78,5 +80,5 @@ sma:
           - suo
   report:
     format: csv
-    location: reports/testing/
-    filename: "${startTime}_${runHash}/${name}.csv" #${name} is mandetory
+    location: reports/${startTime}_${runHash}/  # Can use ${runHash}, ${startTime}, and any run_extras keys
+    filename: "${name}.csv"  # Must NOT contain path separators - ${name} is mandatory

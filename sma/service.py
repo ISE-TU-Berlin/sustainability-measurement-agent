@@ -27,6 +27,8 @@ class ServiceException(Exception):
         if self.explanation:
             message = f"{message}: {self.explanation}"
         return message
-    
+
+#Implement an IPMI service client besides prometheus
+
 class Service:
     pass

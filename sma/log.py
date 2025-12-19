@@ -2,8 +2,8 @@
 Licenced under GLPv3, originally developed for the OXN project (https://github.com/nymphbox/oxn).
 """
 import logging
-import socket
 import logging.config
+import socket
 
 HOSTNAME = socket.gethostname()
 

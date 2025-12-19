@@ -29,7 +29,7 @@ SMA is an open-source tool designed to help deploy, collect and report sustainab
 
 
 ## Use / Install
-
+Make sure you have Python 3.8+ as well as hdf5 and jupyter installed. You may need to install additional dependencies depending on your setup, e.g., c-blosc lzo bzip2 gcc.
 ```bash
 pip install sustainability-measurement-agent
 

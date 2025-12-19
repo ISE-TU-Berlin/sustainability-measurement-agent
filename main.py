@@ -1,6 +1,7 @@
 from logging import getLogger
 import sys
 from sma import SustainabilityMeasurementAgent, Config, SMAObserver
+from sma.model import SMASession
 
 log = getLogger(__file__)  
 log.setLevel("INFO")
@@ -27,16 +28,19 @@ class SimpleLogger(SMAObserver):
 
     def onTeardown(self) -> None:
         log.info("SMA teardown completed.")
-sma.register_observer(SimpleLogger())
+sma.register_sma_observer(SimpleLogger())
 sma.connect()
 def wait_for_user() -> None:
     input("Hit Enter to to Stop Measuring...")
 
+sma.setup(SMASession(
+    name="TestSession"
+))
 sma.run(wait_for_user)
 sma.teardown()
 
 log.info("Sustainability Measurement Agent finished.")
-report_location = config.report.get("location")
+report_location = config.report.location
 if report_location:
     log.info(f"Report written to {report_location}")
 

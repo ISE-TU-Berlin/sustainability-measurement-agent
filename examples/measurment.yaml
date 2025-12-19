@@ -1,0 +1,71 @@
+sma:
+  version: 0.0.1
+  deployment:
+    namespace: sma
+    install: true
+  services:
+    prometheus:
+      address: 130.0.0.49:30900
+      chart: prometheus-community/prometheus
+      version: 14.6.0
+      values:
+        - service.type: NodePort
+          service.nodePort: 30900
+  sensors:
+    kepler:
+      chart: kepler/kepler
+      version: 0.8.1
+    scaphandre:
+      chart: helm/scaphandre
+      version: 0.9.0
+    cadvisor:
+      chart: helm/cadvisor
+      version: 0.9.0
+    kube_metrics:
+      chart: metrics-server/metrics-server
+      version: 3.13.0
+  oobservation:
+    mode: trigger # triggger (python function that blocks), timer (based on window settings), continuous (collects data until stopped, with python function that blocks)
+    window:
+      left: 10s
+      right: 10s
+      duration: 10s
+    targets:
+      - name: suo
+        namespace: kubeai
+  measurements:
+    - system_CPU: # name of the measurment in the report
+        type: aggregate # type of the measurment (raw, aggregate) 
+        layer: pod # layer of the measurment (pod, node, container)
+        query: sum(rate(container_cpu_usage_seconds_total{namespace="${namespace}"}[1m]))
+        step: 30 # sampling step in seconds
+        unit: cpu_time_seconds # unit of the measurment
+        target:
+          - all # target name defined in the observation section (all for all targets)
+    - pod-consumption:
+        type: aggregate
+        layer: pod
+        prepared_query: pod_kepler_energy_consumption # predefined query in SMA for some common metrics, with exclusive use of sensors 
+        step: 30
+        unit: watts
+        sensors: # altern
+          - kepler
+    - node-consumption:
+        type: aggregate
+        layer: node
+        prepared_query: node_scaphandre_energy_consumption
+        step: 30
+        unit: watts
+        sensors:
+          - scaphandre
+  report:
+    format: csv
+    location: reports/${startTime}_${runHash}/
+    filename: "${name}_${startTime}.csv"
+    post_processor:
+      - name: overview
+        type: notebook
+        notebook: reports/overview.ipynb # path to the notebook to run with the stored data
+      - name: validation
+        type: sma
+        notebook: sma.validation.Validator

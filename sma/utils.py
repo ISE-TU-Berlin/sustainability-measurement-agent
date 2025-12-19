@@ -5,17 +5,10 @@ Connection: Utility functions are used across different modules for common tasks
 
  """
 
-import os
 import re
 import string
-from typing import Callable
 from datetime import datetime
 from datetime import timezone
-
-import functools
-
-import yaml
-
 
 SECONDS_MAP = {
     "us": 1 / 10 ** 6,

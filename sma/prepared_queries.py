@@ -1,7 +1,6 @@
 from typing import Dict
-from sma import utils
-from sma.prometheus import PrometheusMetric
-from sma.config import Config, MeasurementConfig
+
+from sma.model import MeasurementConfig
 
 prepared_queries: Dict[str, MeasurementConfig] = {}
 

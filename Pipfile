@@ -6,14 +6,16 @@ name = "pypi"
 [packages]
 kubernetes = "*"
 pyyaml = "*"
-pandas = "*"
-numpy = "*"
+pandas = ">=2.3.0"
+numpy = "<2"
 requests = "*"
+tables = "==3.9.2"
 
 [dev-packages]
 pyproject-pipenv = "*"
 build = "*"
 ipykernel = "*"
+pytest = "*"
 
 [requires]
 python_version = "3.9"

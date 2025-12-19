@@ -13,17 +13,24 @@ Licenced under GLPv3, originally developed for the OXN project (https://github.c
 import abc
 import datetime
 import logging
-from math import e
 import uuid
-import pandas as pd
-import numpy as np
+from string import Template
 from typing import Any, Dict, List, Optional
+
+import numpy as np
+import pandas as pd
 import requests
 from requests.adapters import Retry, HTTPAdapter
+
 from sma import utils
+from sma.enviroment import Environment
+from sma.model import ObservationTarget, MeasurementConfig
 from sma.service import ServiceClient, ServiceException
-from sma.observations import ObservationTarget
-from string import Template
+from sma.model import (
+    Node, Pod, Container, Process, SMARun
+)
+from sma.prepared_queries import prepared_queries
+
 logger = logging.getLogger(__name__)
 
 # NOTE: prometheus wire timestamps are in milliseconds since unix epoch utc-aware
@@ -291,7 +298,7 @@ class Prometheus(ServiceClient):
                 explanation=f"{requests_exception}",
             )
 
-    def range_query(self, query, start, end, step=None, timeout=None):
+    def range_query(self, query:str, start:float, end:float, step:Optional[int]=None, timeout:Optional[int]=None):
         """Evaluate a Prometheus query over a time range"""
         range_query = self.endpoints.get("range_query")
         if range_query is None:
@@ -526,3 +533,104 @@ class PrometheusMetric(ResponseVariable):
             )
             
         return self.data
+
+
+# MeasurementConfig extension with Prometheus-specific methods
+# Base dataclass is defined in model.py
+def measurement_config_to_prometheus_query(
+    config: MeasurementConfig,
+    name: str,
+    client: Prometheus,
+    named_targets: Optional[Dict[str, ObservationTarget]] = None,
+) -> PrometheusMetric:
+    """Convert MeasurementConfig to PrometheusMetric query."""
+    targets: List[ObservationTarget] = []
+    if config.target_names is None or named_targets is None:
+        targets = []
+    elif "all" in config.target_names:
+        targets = list(named_targets.values())
+    else:
+        for tname in config.target_names:
+            if tname not in named_targets:
+                raise KeyError(f"measurement {config.name} references unknown target '{tname}'")
+            targets.append(named_targets[tname])
+
+    return PrometheusMetric(
+        client=client,
+        name=name,
+        query=config.query,
+        layer=config.layer,
+        unit=config.unit,
+        query_type=config.type,
+        step=config.step,
+        targets=targets,
+    )
+
+class PrometheusEnvironmentCollector:
+    def __init__(self, prometheus_client: Prometheus) -> None:
+
+        self.prometheus = prometheus_client
+
+        if not self.prometheus.ping():
+            raise ValueError("Prometheus service is not configured to collect environment.")
+
+        self.queries: Dict[str, "PrometheusMetric"] = {
+            "node_infos": measurement_config_to_prometheus_query(prepared_queries["node_infos"], "node_info", self.prometheus),
+            "pod_infos": measurement_config_to_prometheus_query(prepared_queries["pod_infos"], "pod_info", self.prometheus),
+            "node_metadata": measurement_config_to_prometheus_query(prepared_queries["node_metadata"], "node_metadata", self.prometheus ),
+            "container_infos": measurement_config_to_prometheus_query(prepared_queries["container_infos"], "container_info", self.prometheus),
+
+        }
+
+
+
+    def _observe_node_infos(self, run: "SMARun") -> List[Node]:
+        node_info = self.queries["node_infos"].observe(start=run.startTime,end=run.endTime).reset_index(drop=True).drop(
+            columns=['timestamp', 'layer', 'unit', 'app_kubernetes_io_instance', 'app_kubernetes_io_version',
+                     'helm_sh_chart', 'instance', 'kubeproxy_version', 'service']).drop_duplicates().set_index('node')
+
+        nodes : List[Node] = node_info.apply(lambda row: Node(name=row.name, labels=row.to_dict()), axis=1).values.tolist()
+
+        return nodes
+
+    def _observe_pod_infos(self, run: "SMARun") -> List[Pod]:
+        pod_info = self.queries["pod_infos"].observe(run.startTime, run.endTime)
+
+        pods : List[Pod] = []
+        #TODO: extract pods from pod_info dataframe
+        return pods
+
+    def _observe_containers(self, run: "SMARun") -> List[Container]:
+        container_info = self.queries["container_infos"].observe(run.startTime, run.endTime)
+
+        containers : List[Container] = []
+
+        #TODO: extract containers from container_info dataframe
+        return containers
+
+    def _observe_processes(self, run: "SMARun") -> List[Process]:
+
+        processes : List[Process] = []
+        return processes
+
+
+
+    def observe_environment(self, run: "SMARun") -> Environment:
+        # Implement Prometheus queries to collect environment data
+        env = Environment()
+
+        nodes = self._observe_node_infos(run)
+        env.nodes = nodes
+
+        pods = self._observe_pod_infos(run)
+        env.pods = pods
+
+        containers = self._observe_containers(run)
+        env.containers = containers
+
+        processes = self._observe_processes(run)
+        env.processes = processes
+
+        #TODO: do a assignment model, so we can map pods to nodes, containers to pods, etc.
+
+        return env

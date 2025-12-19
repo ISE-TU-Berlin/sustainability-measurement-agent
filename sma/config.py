@@ -19,21 +19,17 @@ Aided by AI.
 
 from __future__ import annotations
 
-import os
 import re
-from dataclasses import dataclass
-from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
-
-# Local imports (kept light). Prometheus and PrometheusQuery are used only at
-# runtime when building queries; importing this module should not force heavy
-# runtime dependencies beyond the package itself.
-from sma.prometheus import Prometheus, PrometheusMetric
-from sma.service import ServiceClient
-from sma.observations import ObservationTarget, ObservationWindow, ObservationConfig
-
+from typing import Any, Dict
 from typing import Optional, List
 
+from sma.model import (
+    EnvironmentCollector, ReportConfig, MeasurementConfig,
+    ObservationTarget, ObservationWindow, ObservationConfig, ObservationEnvironmentConfig
+)
+
+from sma.prometheus import Prometheus, PrometheusMetric, PrometheusEnvironmentCollector, measurement_config_to_prometheus_query
+from sma.service import ServiceClient
 
 
 def _parse_duration(value: Optional[Any]) -> int:
@@ -63,43 +59,10 @@ def _parse_duration(value: Optional[Any]) -> int:
 
 
 
-
-@dataclass
-class MeasurementConfig:
-    name: str
-    type: str
-    query: str
-    step: int = 60
-    layer: Optional[str] = None
-    unit: Optional[str] = None
-    target_names: Optional[List[str]] = None
-
-    def to_prometheus_query(self, name: str, client: Prometheus, named_targets: Dict[str, ObservationTarget]) -> PrometheusMetric:
-        targets: List[ObservationTarget] = []
-        if not self.target_names:
-            targets = []
-        elif "all" in self.target_names:
-            targets = list(named_targets.values())
-        else:
-            for tname in self.target_names:
-                if tname not in named_targets:
-                    raise KeyError(f"measurement {self.name} references unknown target '{tname}'")
-                targets.append(named_targets[tname])
-
-        return PrometheusMetric(
-            client=client,
-            name=name,
-            query=self.query,
-            layer=self.layer,
-            unit=self.unit,
-            query_type=self.type,
-            step=self.step,
-            targets=targets,
-        )
-
-
 class Config:
-    def __init__(self, version: Optional[str], services: Dict[str, ServiceClient], observation: ObservationConfig, measurements: Dict[str, MeasurementConfig], report: Dict[str, Any]):
+    services: dict[str, ServiceClient]
+
+    def __init__(self, version: Optional[str], services: Dict[str, ServiceClient], observation: ObservationConfig, measurements: Dict[str, MeasurementConfig], report: ReportConfig):
         self.version = version
         self.services = services
         self.observation = observation
@@ -191,7 +154,14 @@ class Config:
             match_labels["namespace"] = namespace
             ot = ObservationTarget(match_labels=match_labels)
             named_targets[name] = ot
-        observation = ObservationConfig(mode=mode, window=window, targets=list(named_targets.values()))
+
+
+        obs_env_raw = obs_raw.get("environment", {}) or {}
+        obs_env: Optional[ObservationEnvironmentConfig] = None
+        if "collector" in obs_env_raw:
+            obs_env = ObservationEnvironmentConfig(collector=obs_env_raw["collector"])
+
+        observation = ObservationConfig(mode=mode, window=window, targets=list(named_targets.values()), environment=obs_env)
 
         # Measurements
         measurements_raw = sma.get("measurements", []) or []
@@ -213,7 +183,8 @@ class Config:
                 target_names = [target_names]
             measurements[name] = MeasurementConfig(name=name, type=mtype, query=query, step=step, layer=layer, unit=unit, target_names=target_names)
 
-        report = sma.get("report", {}) or {}
+        report_raw = sma.get("report", {}) or {}
+        report = ReportConfig.from_dict(report_raw)
 
         cfg = cls(version=version, services=services_cfg, observation=observation, measurements=measurements, report=report)
         cfg._named_targets = named_targets
@@ -232,11 +203,22 @@ class Config:
             raise RuntimeError("no prometheus service configured")
         out: Dict[str, PrometheusMetric] = {}
         for name, m in self.measurements.items():
-            out[name] = m.to_prometheus_query(name=name, client=client, named_targets=self._named_targets)
+            out[name] = measurement_config_to_prometheus_query(m, name=name, client=client, named_targets=self._named_targets)
         return out
     
     def create_measurement_query(self, measurement: MeasurementConfig) -> PrometheusMetric:
         client = self.prometheus_client()
         if client is None:
             raise RuntimeError("no prometheus service configured")
-        return measurement.to_prometheus_query(name=measurement.name, client=client, named_targets=self._named_targets)
+        return measurement_config_to_prometheus_query(measurement, name=measurement.name, client=client, named_targets=self._named_targets)
+
+    def create_environment_observation(self) -> Optional[EnvironmentCollector]:
+        if self.observation.environment:
+            collector_name = self.observation.environment.collector
+            if collector_name == "prometheus":
+                if self.prometheus_client() is None:
+                    raise RuntimeError("no prometheus service configured")
+                return PrometheusEnvironmentCollector(self.prometheus_client())
+            else:
+                raise ValueError(f"Unknown environment collector '{collector_name}'")
+        return None

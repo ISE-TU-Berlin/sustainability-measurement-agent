@@ -24,8 +24,22 @@ classifiers = [
 ]
 dependencies = ["kubernetes", "pyyaml", "pandas", "numpy", "requests"]
 
+[project.optional-dependencies]
+test = ["pytest>=7.0", "pytest-kubernetes>=0.3.0"]
+
 
 [project.urls]
 Homepage = "https://github.com/ISE-TU-Berlin/sustainability-measurement-agent"
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+markers = [
+    "integration: marks tests as integration tests requiring K8s cluster (deselect with '-m \"not integration\"')",
+]
 
 
