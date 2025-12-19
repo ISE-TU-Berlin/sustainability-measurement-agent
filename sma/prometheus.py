@@ -594,19 +594,65 @@ class PrometheusEnvironmentCollector:
         return nodes
 
     def _observe_pod_infos(self, run: "SMARun") -> List[Pod]:
+        useless_tags = ['__name__', 'app_kubernetes_io_component', 'app_kubernetes_io_instance',
+                        'app_kubernetes_io_managed_by', 'app_kubernetes_io_name',
+                        'app_kubernetes_io_part_of', 'app_kubernetes_io_version',
+                        'helm_sh_chart', 'pod_info', 'layer', 'unit']
         pod_info = self.queries["pod_infos"].observe(run.startTime, run.endTime)
 
-        pods : List[Pod] = []
-        #TODO: extract pods from pod_info dataframe
-        return pods
+        pod_list : List[Pod] = []
+        pods = pod_info.drop(columns=useless_tags + ['timestamp'], errors='ignore').reset_index()
+        pods = pods.groupby(['pod', 'node', 'namespace', 'created_by_kind', 'created_by_name', 'host_network', 'uid'])[
+            'timestamp'].agg(['min', 'max', 'count']).reset_index()
+
+        for _, row in pods.iterrows():
+            pod = Pod(
+                name=row['pod'],
+                namespace=row['namespace'],
+                node_name=row['node'],
+                labels={
+                    "uid": row['uid'],
+                    "created_by": row['created_by_kind'],
+                    "created_by_name": row['created_by_name'],
+                    "host_network": row['host_network'],
+
+                }
+            )
+            pod.lifetime_start = row['min']
+            pod.lifetime_end = row['max']
+
+            pod_list.append(pod)
+        return pod_list
 
     def _observe_containers(self, run: "SMARun") -> List[Container]:
         container_info = self.queries["container_infos"].observe(run.startTime, run.endTime)
 
-        containers : List[Container] = []
+        container_list : List[Container] = []
 
-        #TODO: extract containers from container_info dataframe
-        return containers
+        useless_tags = ['layer', 'unit', 'app_kubernetes_io_instance', 'app_kubernetes_io_version', 'helm_sh_chart',
+                        'instance', 'kubeproxy_version', 'service', '__name__', 'app_kubernetes_io_managed_by',
+                        'app_kubernetes_io_part_of', 'app_kubernetes_io_name', 'app_kubernetes_io_component', 'job']
+
+        containers = container_info.drop(columns=useless_tags + ['timestamp'], errors='ignore').reset_index()
+        containers = containers.groupby(['node', 'pod', 'container', 'container_id', 'image_id', 'namespace', 'uid'])[
+            'timestamp'].agg(['min', 'max', 'count']).reset_index()
+
+        for _, row in containers.iterrows():
+            container = Container(
+                name=row['container'],
+                pod_name=row['pod'],
+                namespace=row['namespace'],
+                node_name=row['node'],
+                labels={
+                    "image": row['image_id'],
+                    "uid": row['uid']
+                }
+            )
+            container.lifetime_start = row['min']
+            container.lifetime_end = row['max']
+
+            container_list.append(container)
+        return container_list
 
     def _observe_processes(self, run: "SMARun") -> List[Process]:
 
