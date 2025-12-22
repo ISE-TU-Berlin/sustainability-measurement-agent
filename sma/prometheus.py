@@ -569,6 +569,7 @@ def measurement_config_to_prometheus_query(
 class PrometheusEnvironmentCollector:
     def __init__(self, prometheus_client: Prometheus) -> None:
 
+        logger.debug("Initializing Prometheus Environment Collector for Prometheus at " + prometheus_client.base_url)
         self.prometheus = prometheus_client
 
         if not self.prometheus.ping():

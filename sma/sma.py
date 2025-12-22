@@ -29,11 +29,9 @@ class SustainabilityMeasurementAgent(object):
     def __init__(self, config: Config, observers: list[SMAObserver] = [], meta: SMASession = None) -> None:
         self.config = config
         self.logger: Logger = getLogger("sma.agent")
-        print(self.logger)
         self.observers: list[SMAObserver] = observers
 
         self.logger.debug("Initializing Environment Collector...")
-        self.logger.warning("Environment collection is experimental and may not work as expected.")
         self.environment_collector: Optional[EnvironmentCollector] = self.config.create_environment_observation()
         self.session: Optional[SMASession] = None
 
