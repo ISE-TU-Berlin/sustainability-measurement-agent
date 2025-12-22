@@ -1,0 +1,6 @@
+{
+  "helm_chart": "prometheus-community/kepler-chart",
+  "values": {},
+  "helm_repo": "https://prometheus-community.github.io/helm-charts",
+  "namespace": "monitoring"
+}

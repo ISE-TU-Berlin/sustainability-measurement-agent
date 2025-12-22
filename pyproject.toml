@@ -7,7 +7,7 @@ packages = ["sma"]
 
 [project]
 name = "sustainability-measurement-agent"
-version = "0.1.7"
+version = "0.1.8"
 description = "Sustainability Measurement Agent - A tool for collecting and analyzing sustainability metrics in cloud native enviroments."
 authors = [
     { name = "Sebastian Werner", email = "werner@tu-berlin.de" }
@@ -22,7 +22,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
     "Topic :: System :: Monitoring",
 ]
-dependencies = ["kubernetes", "pyyaml", "pandas", "numpy", "requests"]
+dependencies = ["kubernetes", "pyyaml", "pandas>=2.3.0", "numpy<2", "requests", "tables==3.9.2"]
 
 [project.optional-dependencies]
 test = ["pytest>=7.0", "pytest-kubernetes>=0.3.0"]
