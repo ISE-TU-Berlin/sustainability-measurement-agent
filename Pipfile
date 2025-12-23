@@ -10,6 +10,7 @@ pandas = ">=2.3.0"
 numpy = "<2"
 requests = "*"
 tables = "==3.9.2"
+click = "*"
 
 [dev-packages]
 pyproject-pipenv = "*"
