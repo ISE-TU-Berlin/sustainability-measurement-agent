@@ -8,7 +8,12 @@ import socket
 HOSTNAME = socket.gethostname()
 
 
-def initialize_logging(loglevel, logfile=None):
+def initialize_logging(
+        loglevel, 
+        logfile=None, 
+        logger_class="logging.StreamHandler"
+        ) -> None:
+    """Initialize logging for the SMA."""
     loglevel = loglevel.upper()
 
     LOGGING_CONFIG = {
@@ -24,7 +29,7 @@ def initialize_logging(loglevel, logfile=None):
         },
         "handlers": {
             "console": {
-                "class": "logging.StreamHandler",
+                "class": logger_class,
                 "formatter": "default",
             },
         },
