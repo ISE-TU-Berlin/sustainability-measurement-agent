@@ -32,7 +32,7 @@ class SMAObserver(Protocol):
     def onSetup(self) -> None:
         pass
 
-    def onLeft(self) -> None:
+    def onLeftStarted(self) -> None:
         pass
 
     def onStart(self) -> None:
@@ -41,7 +41,7 @@ class SMAObserver(Protocol):
     def onEnd(self) -> None:
         pass
 
-    def onRight(self) -> None:
+    def onRightFinished(self) -> None:
         pass
 
     def onTeardown(self) -> None:
