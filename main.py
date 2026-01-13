@@ -1,7 +1,9 @@
 import logging
 import sys
-from sma import SustainabilityMeasurementAgent, Config, SMAObserver
 from sma.model import SMASession
+from sma.config import Config
+from sma.sma import SustainabilityMeasurementAgent, SMAObserver
+
 import os
 
 from sma.log import initialize_logging
@@ -29,7 +31,7 @@ class SimpleLogger(SMAObserver):
     def onSetup(self) -> None:
         log.info("SMA setup started.")
 
-    def onLeft(self) -> None:
+    def onLeftStarted(self) -> None:
         log.info("Left window started.")
 
     def onStart(self) -> None:
@@ -38,7 +40,7 @@ class SimpleLogger(SMAObserver):
     def onEnd(self) -> None:
         log.info("Observation ended.")
 
-    def onRight(self) -> None:
+    def onRightFinished(self) -> None:
         log.info("Right window started.")
 
     def onTeardown(self) -> None:

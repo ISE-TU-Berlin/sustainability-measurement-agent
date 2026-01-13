@@ -103,12 +103,14 @@ class SustainabilityMeasurementAgent(object):
         window = self.config.observation.window
         self.logger.info(f"Observation window: left={window.left}s, right={window.right}s, duration={window.duration}s") # type: ignore
 
+        if self.session is None:
+            raise ValueError("Session must be set before running in trigger mode.")
+        
         # checks:
         if mode == "timer":
             assert window is not None, "Observation window must be defined for timer mode"
         elif mode == "trigger":
-            if self.session is None:
-                raise ValueError("Session must be set before running in trigger mode.")
+           
             if trigger is None:
                 raise ValueError("Trigger function must be provided for trigger mode")
         else:
@@ -127,10 +129,14 @@ class SustainabilityMeasurementAgent(object):
 
         treatment_start = datetime.datetime.now()
 
+        trigger_meta = {}
+        
         if mode == "timer":
+            assert window is not None
             self.logger.info(f"Waiting for treatment duration: {window.duration}s")
             sleep(window.duration)
         elif mode == "trigger":
+            assert trigger is not None
             self.logger.info(f"Waiting for trigger")
             # wait for the blocking trigger function 
             trigger_meta = trigger()
