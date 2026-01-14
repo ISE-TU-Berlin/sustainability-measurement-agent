@@ -39,6 +39,7 @@ class SustainabilityMeasurementAgent(object):
             self.setup(meta)
 
     def setup(self, session:SMASession):
+        self.logger.debug("Setting up logger with session {session}")
         self.session = session
         self.notify_observers("onSetup")
 
@@ -47,6 +48,8 @@ class SustainabilityMeasurementAgent(object):
             method = getattr(observer, event, None)
             if callable(method):
                 method()
+            else:
+                self.logger.debug(f"tried calling inexistent event {event}")
 
     def register_sma_observer(self, observer: SMAObserver) -> None:
         self.observers.append(observer)

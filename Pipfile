@@ -11,6 +11,7 @@ numpy = "<2"
 requests = "*"
 tables = "==3.9.2"
 click = "*"
+rich = "*"
 
 [dev-packages]
 pyproject-pipenv = "*"
