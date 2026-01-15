@@ -65,9 +65,30 @@ class SustainabilityMeasurementAgent(object):
             else:
                self.logger.error(f"Service {k} is not reachable.")
                raise ValueError(f"Service {k} is not reachable.")
+            
+
+    def probe(self) -> dict[str, bool]:
+        """Probe all measurements to check if they are available.
+        
+        Returns:
+            A dictionary mapping measurement names to their availability status.
+        """
+        results = {}
+        queries = self.config.measurement_queries()
+        
+        for name, measurement in queries.items():   
+            self.logger.debug(f"Probing measurement {name}: {measurement}")
+            try:
+                available = measurement.probe()
+                results[name] = available
+            except ServiceException as e:
+                self.logger.error(f"Error probing measurement {name}: {e}")
+                results[name] = False   
+                 
+        return results
 
     def observe_once(self, run_data: ReportMetadata) -> None:
-        """Observe measurements for a completed run and persist to disk.
+        """Observe (i.e., retrieve from target) measurements for a completed run and persist to disk.
         
         Args:
             run_data: ReportMetadata containing timing and run identification data
@@ -79,7 +100,7 @@ class SustainabilityMeasurementAgent(object):
         for name, measurement in queries.items():   
             try:
                 self.logger.info(f"Querying measurement: {name}")
-                #XXX: not a good pattern... should not use knowlalge about internals of measurment..., labeling should happen during observation
+                #XXX: not a good pattern... should not use knowledge about internals of measurment..., labeling should happen during observation
                 df = measurement.observe(start=run_data.run.startTime, end=run_data.run.endTime)
                 df = measurement.label(treatment_start=run_data.run.treatment_start.timestamp(), treatment_end=run_data.run.treatment_end.timestamp(),
                                        label_column="treatment", label="Treatment")

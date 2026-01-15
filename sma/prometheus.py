@@ -505,8 +505,31 @@ class PrometheusMetric(ResponseVariable):
                 message="Cannot create dataframe from empty Prometheus response",
                 explanation=f"{exc}",
             )
+        
+    def probe(self) -> bool:
+        """
+        Probe Prometheus to check if the metric exists.
+        """
+        try:
+            prometheus_query = self.client.build_query(
+                metric_name=self.query,
+                targets=self.target
+            )
+            response = self.client.instant_query(query=prometheus_query)
+            results = response.get("data", {}).get("result", [])
+            if len(results) > 0:
+                logger.debug(f"Prometheus metric {self.name} returned {results}")
+                return True
+            else:
+                return False
+        except ServiceException as e:
+            logger.error(f"Error probing Prometheus metric {self.name}: {e}")
+            return False
 
     def observe(self, start: datetime.datetime, end: datetime.datetime) -> pd.DataFrame:
+        """
+        Query Prometheus for the metric data over the specified time range, and convert to DataFrame.
+        """
 
         start_timestamp = start.astimezone(datetime.timezone.utc).timestamp()
         end_timestamp = end.astimezone(datetime.timezone.utc).timestamp()
@@ -666,17 +689,29 @@ class PrometheusEnvironmentCollector:
         # Implement Prometheus queries to collect environment data
         env = Environment()
 
-        nodes = self._observe_node_infos(run)
-        env.nodes = nodes
+        try:
+            nodes = self._observe_node_infos(run)
+            env.nodes = nodes
+        except KeyError as e:
+            print(f"Error observing node infos: {e}")
 
-        pods = self._observe_pod_infos(run)
-        env.pods = pods
+        try:
+            pods = self._observe_pod_infos(run)
+            env.pods = pods
+        except KeyError as e:
+            print(f"Error observing pod infos: {e}")
 
-        containers = self._observe_containers(run)
-        env.containers = containers
+        try:
+            containers = self._observe_containers(run)
+            env.containers = containers
+        except KeyError as e:
+            print(f"Error observing container infos: {e}")
 
-        processes = self._observe_processes(run)
-        env.processes = processes
+        try:
+            processes = self._observe_processes(run)
+            env.processes = processes
+        except KeyError as e:
+            print(f"Error observing process infos: {e}")
 
         #TODO: do a assignment model, so we can map pods to nodes, containers to pods, etc.
 
