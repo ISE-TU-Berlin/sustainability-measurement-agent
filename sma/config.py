@@ -1,4 +1,3 @@
-
 """Configuration loader for the Sustainability Measurement Agent (SMA).
 
 This module provides a small, dependency-light loader for the YAML config
@@ -58,11 +57,18 @@ def _parse_duration(value: Optional[Any]) -> int:
     return total
 
 
-
 class Config:
     services: dict[str, ServiceClient]
 
-    def __init__(self, version: Optional[str], services: Dict[str, ServiceClient], observation: ObservationConfig, measurements: Dict[str, MeasurementConfig], report: ReportConfig):
+    def __init__(
+        self,
+        version: Optional[str],
+        services: Dict[str, ServiceClient],
+        observation: ObservationConfig,
+        measurements: Dict[str, MeasurementConfig],
+        report: ReportConfig,
+        modules: Dict[str, Any] = {},
+    ):
         self.version = version
         self.services = services
         self.observation = observation
@@ -70,8 +76,9 @@ class Config:
         self.report = report
         # runtime caches
         self._named_targets: Dict[str, ObservationTarget] = {}
-        
+
         self.config_file : str = ""
+        self.modules: Dict[str, Any] = modules
 
     @classmethod
     def from_file(cls, path: str) -> "Config":
@@ -94,6 +101,9 @@ class Config:
 
         sma = raw.get("sma") or {}
         version = sma.get("version")
+
+        # Modules
+        modules = sma.get("modules", {}) or {}
 
         # Services
         services_cfg: Dict[str, Any] = {}
@@ -126,6 +136,7 @@ class Config:
         # Observation
         obs_raw = sma.get("observation", {}) or {}
         mode = obs_raw.get("mode", "timer")  # default to 'timer' mode
+        module_trigger = obs_raw.get("module_trigger")
         window_raw = obs_raw.get("window", {}) or {}
         window = None
         if len(window_raw) == 0:
@@ -155,13 +166,12 @@ class Config:
             ot = ObservationTarget(match_labels=match_labels)
             named_targets[name] = ot
 
-
         obs_env_raw = obs_raw.get("environment", {}) or {}
         obs_env: Optional[ObservationEnvironmentConfig] = None
         if "collector" in obs_env_raw:
             obs_env = ObservationEnvironmentConfig(collector=obs_env_raw["collector"])
 
-        observation = ObservationConfig(mode=mode, window=window, targets=list(named_targets.values()), environment=obs_env)
+        observation = ObservationConfig(mode=mode, module_trigger=module_trigger, window=window, targets=list(named_targets.values()), environment=obs_env)
 
         # Measurements
         measurements_raw = sma.get("measurements", []) or []
@@ -186,7 +196,8 @@ class Config:
         report_raw = sma.get("report", {}) or {}
         report = ReportConfig.from_dict(report_raw)
 
-        cfg = cls(version=version, services=services_cfg, observation=observation, measurements=measurements, report=report)
+        cfg = cls(version=version, services=services_cfg,
+                  observation=observation, measurements=measurements, report=report, modules=modules)
         cfg._named_targets = named_targets
         cfg.config_file = config_file if config_file else ""
         return cfg
@@ -205,7 +216,7 @@ class Config:
         for name, m in self.measurements.items():
             out[name] = measurement_config_to_prometheus_query(m, name=name, client=client, named_targets=self._named_targets)
         return out
-    
+
     def create_measurement_query(self, measurement: MeasurementConfig) -> PrometheusMetric:
         client = self.prometheus_client()
         if client is None:

@@ -2,6 +2,8 @@
 import datetime
 import hashlib
 import random
+import importlib
+
 from logging import Logger, getLogger
 from time import sleep
 from typing import Optional
@@ -37,6 +39,32 @@ class SustainabilityMeasurementAgent(object):
 
         if meta is not None:
             self.setup(meta)
+
+        self.modules = {}
+        self.load_modules()
+
+    def load_modules(self) -> None:
+        """Load SMA modules as per configuration and reguister them as observers."""
+        for module_id, module_config in self.config.modules.items():
+            self.logger.info(f"Loading module: {module_id}")
+            module_name = module_config.get("module")
+            if not module_name:
+                self.logger.error(f"Module configuration for {module_id} missing 'module' key.")
+                continue
+
+            module_cfg = module_config.get("config", {})
+            path = f"modules.{module_name}.main"
+            klass_name = f"{module_name.capitalize()}SmaModule"  # Placeholder; in real code, determine class name dynamically
+            self.logger.debug(f"Importing module class {klass_name} from {path}...")
+            
+            module = importlib.import_module(path)
+            klass = getattr(module, klass_name)
+            module_instance = klass(module_cfg)
+            self.register_sma_observer(module_instance)
+            self.modules[module_id] = module_instance
+
+        self.logger.info(f"Loaded modules: {list(self.modules)}")
+
 
     def setup(self, session:SMASession):
         self.logger.debug("Setting up logger with session {session}")
@@ -139,6 +167,11 @@ class SustainabilityMeasurementAgent(object):
            
             if trigger is None:
                 raise ValueError("Trigger function must be provided for trigger mode")
+        elif mode == "module":
+            assert trigger is None, "Trigger function should not be provided for module mode"
+            md = self.modules[self.config.observation.module_trigger]
+            assert hasattr(md, 'trigger') and callable(getattr(md, 'trigger')), \
+                f"Module {md} must have a callable 'trigger' function"
         else:
             raise ValueError(f"Unknown observation mode: {mode}")
         
@@ -161,6 +194,13 @@ class SustainabilityMeasurementAgent(object):
             assert window is not None
             self.logger.info(f"Waiting for treatment duration: {window.duration}s")
             sleep(window.duration)
+        elif mode == "module":
+            module_id = self.config.observation.module_trigger
+            assert module_id is not None
+            self.logger.info(f"Waiting for module trigger from module: {module_id}")
+            module = self.modules[module_id]
+            trigger_meta = module.trigger()
+            self.logger.info(f"Module {module_id} trigger function completed with result: {trigger_meta}")
         elif mode == "trigger":
             assert trigger is not None
             self.logger.info(f"Waiting for trigger")

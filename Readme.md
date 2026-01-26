@@ -67,6 +67,9 @@ Fully driven by configuration files, SMA connects to external services (e.g., Pr
 
 SMA exposes an observer API (`SMAObserver`), which allows to hook into the lifecycle events (see the diagram) to extend SMA's functionality programmatically, or to integrate into experiment frameworks.
 
+*Modules* can optionally be used to add functionality, such as installing monitoring infrascture, preparing deployments, running workloads, and enhancing reports.
+
+
 ### Configuration
 
 SMA is configured via YAML files. See the `examples/` folder for sample configurations. The configuration allows to specify which measurement tools to use, how to deploy them, and how to collect and report the measurements.
@@ -96,7 +99,7 @@ Controls automatic deployment of measurement infrastructure.
 | `namespace` | String | Kubernetes namespace where SMA components will be deployed |
 | `install` | Boolean | Whether to automatically install/deploy measurement tools |
 
-##### 3. Services
+##### 3. Observablity Services
 ```yaml
 services:
   prometheus:
@@ -159,7 +162,8 @@ observation:
 
 | Field | Options/Type | Description |
 |-------|--------------|-------------|
-| `mode` | `trigger`, `timer`, `continuous` | **trigger**: Measurement starts/stops based on a Python function that blocks<br>**timer**: Measurement based on time window settings<br>**continuous**: Collects data until stopped, with a blocking Python function |
+| `mode` | `trigger`, `timer`, `continuous`, `module` | **trigger**: Measurement starts/stops based on a Python function that blocks<br>**timer**: Measurement based on time window settings<br>**continuous**: Collects data until stopped, with a blocking Python function<br>**module**: run a trigger function from a module, e.g. a workload runner |
+| `trigger_module` | When in *module* mode, specify the module name to call the trigger from |
 | `window.left` | Duration (e.g., `10s`) | Time to capture before the measurement trigger |
 | `window.right` | Duration (e.g., `10s`) | Time to capture after the measurement trigger |
 | `window.duration` | Duration (e.g., `10s`) | Total measurement duration |
@@ -242,7 +246,7 @@ report:
 | `post_processor[].notebook` | String | Path to Jupyter notebook (when `type: notebook`) |
 | `post_processor[].module` | String | Python module path (when `type: sma`) |
 
-
+Modules can add their own files to the report directory through the `onReport` event.
 
 ### API 
 

@@ -1,16 +1,18 @@
 import sys
 import os
 import logging
+import click
+import time
+
+
+from unittest import runner
 from rich.logging import RichHandler
 from sma.log import initialize_logging
 
 from sma import SustainabilityMeasurementAgent
 from sma import Config, SMAObserver
+from sma import Report
 from sma.model import SMASession
-
-
-# fany cli stuff, not in Pipfile yet to keep dependcies minimal
-import click
 
 logLevel = os.getenv("LOGLEVEL", "INFO").upper()
 # already initialized through the module when importing SMA, so we'll redefine with rich logging
@@ -45,31 +47,18 @@ def run_with_config(config_file: str, probe: str):
     log.debug("Creating Agent...")
     sma = SustainabilityMeasurementAgent(config)
 
-    class SimpleLogger(SMAObserver):
-        def onSetup(self) -> None:
-            log.info("SMA setup started.")
+    
+    log.debug("Loading Modules...")
+    log.debug(config.modules)
 
-        def onLeftStarted(self) -> None:
-            log.info("Left window started.")
 
-        def onStart(self) -> None:
-            log.info("Observation started.")
-
-        def onEnd(self) -> None:
-            log.info("Observation ended.")
-
-        def onRightFinished(self) -> None:
-            log.info("Right window finished.")
-
-        def onTeardown(self) -> None:
-            log.info("SMA teardown completed.")
-
-    sma.register_sma_observer(SimpleLogger())
+    # workload_controller = WorkloadController()
+    # sma.register_sma_observer(workload_controller)
 
     log.debug("Connecting to services...")
     sma.connect()
 
-    if probe != 'none':
+    if probe != 'none': # todo: make probing a module?
         log.info("Probing measurements...")
         results = sma.probe()
         all_available = all(results.values())
@@ -90,14 +79,16 @@ def run_with_config(config_file: str, probe: str):
             elif probe == 'warn':
                 log.warning("Not all measurements are available. Continuing as per 'warn' setting.")
 
-    def wait_for_user() -> None:
-        input("Hit Enter to to Stop Measuring...")
+
+
 
     log.debug("Starting SMA run...")
     sma.setup(SMASession(
         name="TestSession"
     ))
-    sma.run(wait_for_user)
+
+    # todo: load via moduleconfig
+    sma.run()
     sma.teardown()
 
     log.info("Sustainability Measurement Agent finished.")

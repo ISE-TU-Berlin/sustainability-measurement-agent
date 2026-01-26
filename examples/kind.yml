@@ -5,14 +5,19 @@ sma:
       address: http://localhost:9090 # through port forward
   modules:
     telelocust:
+      module: telelocust
+      config:
+        sut_url: "http://teastore-webui"
+        users: 10
+        ramp: 2
   observation:
     # observation window mode: 
     # - trigger (python function that blocks),
     # - timer (based on window settings)
     # - continuous (collects data until stopped, with python function that blocks),
-    # - module (blocking function provided through module)
-    mode: trigger 
-    trigger_module: telelocust
+    # - module (blocking function provided through module specified in modulE_trigger)
+    mode: module 
+    module_trigger: telelocust
     window:
       left: 10s
       right: 10s

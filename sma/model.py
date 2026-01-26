@@ -179,6 +179,7 @@ class ObservationConfig:
     """Configuration for observation behavior."""
     mode: str
     window: Optional[ObservationWindow]
+    module_trigger: Optional[str] = None
     targets: Optional[List[ObservationTarget]] = None
     environment: Optional[ObservationEnvironmentConfig] = None
 
