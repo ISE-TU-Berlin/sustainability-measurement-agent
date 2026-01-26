@@ -517,8 +517,9 @@ class PrometheusMetric(ResponseVariable):
             )
             response = self.client.instant_query(query=prometheus_query)
             results = response.get("data", {}).get("result", [])
+            logger.debug(f"Prometheus metric {self.name} returned {results}")
+
             if len(results) > 0:
-                logger.debug(f"Prometheus metric {self.name} returned {results}")
                 return True
             else:
                 return False
@@ -691,27 +692,31 @@ class PrometheusEnvironmentCollector:
 
         try:
             nodes = self._observe_node_infos(run)
+            logger.debug(f"Observed {nodes} from Prometheus")
             env.nodes = nodes
         except KeyError as e:
-            print(f"Error observing node infos: {e}")
+            logger.warning(f"Error observing node infos: {e}")
 
         try:
             pods = self._observe_pod_infos(run)
+            logger.debug(f"Observed {pods} from Prometheus")
             env.pods = pods
         except KeyError as e:
-            print(f"Error observing pod infos: {e}")
+            logger.warning(f"Error observing pod infos: {e}")
 
         try:
             containers = self._observe_containers(run)
+            logger.debug(f"Observed {containers} containers from Prometheus")
             env.containers = containers
         except KeyError as e:
-            print(f"Error observing container infos: {e}")
+            logger.warning(f"Error observing container infos: {e}")
 
         try:
             processes = self._observe_processes(run)
+            logger.debug(f"Observed {processes} processes from Prometheus")
             env.processes = processes
         except KeyError as e:
-            print(f"Error observing process infos: {e}")
+            logger.warning(f"Error observing process infos: {e}")
 
         #TODO: do a assignment model, so we can map pods to nodes, containers to pods, etc.
 

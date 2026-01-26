@@ -1,0 +1,18 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: sma-kind-cluster
+nodes:
+- role: control-plane
+  extraPortMappings:
+  # prometheus
+  - containerPort: 30990
+    hostPort: 9090
+  # grafana
+  - containerPort: 30930
+    hostPort: 3000
+- role: worker
+  labels:
+    sma_role: suo
+- role: worker
+  labels:
+    sma_role: load

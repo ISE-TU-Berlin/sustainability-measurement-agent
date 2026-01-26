@@ -3,16 +3,24 @@ sma:
   services:
     prometheus:
       address: http://localhost:9090 # through port forward
+  modules:
+    telelocust:
   observation:
-    mode: timer # triggger (python function that blocks), timer (based on window settings), continuous (collects data until stopped, with python function that blocks)
+    # observation window mode: 
+    # - trigger (python function that blocks),
+    # - timer (based on window settings)
+    # - continuous (collects data until stopped, with python function that blocks),
+    # - module (blocking function provided through module)
+    mode: module 
+    trigger_module: telelocust
     window:
-      left: 2s
-      right: 2s
-      duration: 5s
+      left: 10s
+      right: 10s
+      duration: 30s # only used in timer mode
     targets:
       # target name to be referenced later
       - name: suo
-        namespace: stress
+        namespace: teastore
     # environment:
     #   collector: prometheus
   measurements:
