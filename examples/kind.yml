@@ -11,7 +11,7 @@ sma:
     # - timer (based on window settings)
     # - continuous (collects data until stopped, with python function that blocks),
     # - module (blocking function provided through module)
-    mode: module 
+    mode: trigger 
     trigger_module: telelocust
     window:
       left: 10s

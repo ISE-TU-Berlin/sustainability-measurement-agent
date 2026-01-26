@@ -43,13 +43,13 @@ class SustainabilityMeasurementAgent(object):
         self.session = session
         self.notify_observers("onSetup")
 
-    def notify_observers(self, event: str):
+    def notify_observers(self, event: str, **kwargs) -> None:
         for observer in self.observers:
             method = getattr(observer, event, None)
             if callable(method):
-                method()
+                method(**kwargs)
             else:
-                self.logger.debug(f"tried calling inexistent event {event}")
+                self.logger.debug(f"tried calling inexistent event {event} on observer {observer}")
 
     def register_sma_observer(self, observer: SMAObserver) -> None:
         self.observers.append(observer)
@@ -111,7 +111,9 @@ class SustainabilityMeasurementAgent(object):
         if self.environment_collector:
             env = self.environment_collector.observe_environment(run_data.run)
             rep.environment = env
+
         rep.persist()
+        self.notify_observers("onReport", report=rep)
 
 
     def run(self, trigger: Optional[TriggerFunction] = None) -> None:
@@ -194,9 +196,8 @@ class SustainabilityMeasurementAgent(object):
         ))
 
 
-
     def deploy(self) -> None:
-        raise NotImplementedError("Deployment is not yet implemented.")
+        raise NotImplementedError("Deployment is not yet implemented.") # todo: as module?
     
     def undeploy(self) -> None:
         raise NotImplementedError("Undeployment is not yet implemented.")

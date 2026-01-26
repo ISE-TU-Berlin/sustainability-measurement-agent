@@ -1,31 +1,34 @@
 import requests
+import base64
 
-SUT = 'http://localhost:5123'
+DEFAULT_URL = 'http://localhost:5123'
 
 class TeleLocustClient:
-    def __init__(self, sut_url=SUT):
-        self.sut_url = sut_url
+    def __init__(self, telelocust_url=DEFAULT_URL):
+        self.telelocust_url = telelocust_url
         self.token = None
 
-    def start_test_run(self, users=10, spawn_rate=2, run_time='10s', locustfile_path='locustfile.py'):
-        with open(locustfile_path, 'rb') as f:
-            locustfile_base64 = __import__('base64').b64encode(f.read()).decode('utf-8')
+    def start_test_run(self, sut_host, users=10, spawn_rate=2, run_time='10s', locustfile_path=None):
 
         parameters = {
-            'host': self.sut_url,
+            'host': sut_host,
             'users': users,
             'spawn_rate': spawn_rate,
             'run_time': run_time,
-            'locustfile_base64': locustfile_base64,
         }
 
-        response = requests.post(f'{self.sut_url}/runs/start', json=parameters)
+        if locustfile_path is not None:
+            with open(locustfile_path, 'rb') as f:
+                parameters['locustfile_base64'] = base64.b64encode(f.read()).decode('utf-8')
+
+
+        response = requests.post(f'{self.telelocust_url}/runs/start', json=parameters)
         response.raise_for_status()
         self.token =  response.json()['token'] 
         return self.token
 
     def get_run_status(self):
-        response = requests.get(f'{self.sut_url}/runs/{self.token}')
+        response = requests.get(f'{self.telelocust_url}/runs/{self.token}')
         response.raise_for_status()
         return response.json() 
 
@@ -41,14 +44,14 @@ class TeleLocustClient:
         if not self.is_finished():
             raise RuntimeError("Test run is still running. Cannot download data until it is finished.")
 
-        response = requests.get(f'{self.sut_url}/runs/{self.token}/download')
+        response = requests.get(f'{self.telelocust_url}/runs/{self.token}/download')
         response.raise_for_status()
         with open(output_zip_path, 'wb') as f:
             f.write(response.content)
 
 if __name__ == '__main__':
 
-    client = TeleLocustClient(SUT)
+    client = TeleLocustClient(DEFAULT_URL)
 
     client.start_test_run()
     print(f'Started test run with token: {client.token}')

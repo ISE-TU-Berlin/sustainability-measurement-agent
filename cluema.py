@@ -11,9 +11,11 @@ from sma.log import initialize_logging
 
 from sma import SustainabilityMeasurementAgent
 from sma import Config, SMAObserver
+from sma import Report
 from sma.model import SMASession
 
-from telelocust.client import TeleLocustClient
+from modules.telelocust.client import TeleLocustClient
+import zipfile
 
 logLevel = os.getenv("LOGLEVEL", "INFO").upper()
 # already initialized through the module when importing SMA, so we'll redefine with rich logging
@@ -48,7 +50,30 @@ def run_with_config(config_file: str, probe: str):
     log.debug("Creating Agent...")
     sma = SustainabilityMeasurementAgent(config)
 
-    class SimpleLogger(SMAObserver):
+    class WorkloadController(SMAObserver):
+
+        def __init__(self):
+            TELELOCUST_URL = "http://localhost:5123" # todo: from config
+            self.telelocust_client = TeleLocustClient(TELELOCUST_URL)
+
+        def run_workload(self):
+            self.telelocust_client.start_test_run( # todo: load from config
+                sut_host="http://teastore-webui",
+                users=10,
+                spawn_rate=2, 
+                run_time=f"30s",
+                locustfile_path=None
+                )
+            log.info(f'Started test run with token: {self.telelocust_client.token}')  
+            while True:
+                status = self.telelocust_client.get_run_status()
+                log.info(f'Run status: {status}')
+                if status['status'] != 'running':
+                    break
+                time.sleep(0.3)
+            log.info(f"Test run finished. {self.telelocust_client.get_run_status()}")
+
+
         def onSetup(self) -> None:
             log.info("SMA setup started.")
 
@@ -64,15 +89,27 @@ def run_with_config(config_file: str, probe: str):
         def onRightFinished(self) -> None:
             log.info("Right window finished.")
 
+        def onReport(self, report: Report) -> None:
+            workload_zip_path = f"{report.location}/telelocust_run_data.zip"
+            log.info(f"Downloading TeleLocust workload data to {workload_zip_path}...")
+            self.telelocust_client.download_run_data(workload_zip_path)
+
+            unzip_path = report.location + "/telelocust_data"
+            log.info(f"Extracting TeleLocust data to {unzip_path}...")
+            with zipfile.ZipFile(workload_zip_path, 'r') as zip_ref:
+                zip_ref.extractall(unzip_path)
+            log.info("TeleLocust data extracted successfully.")
+
         def onTeardown(self) -> None:
             log.info("SMA teardown completed.")
 
-    sma.register_sma_observer(SimpleLogger())
+    workload_controller = WorkloadController()
+    sma.register_sma_observer(workload_controller)
 
     log.debug("Connecting to services...")
     sma.connect()
 
-    if probe != 'none':
+    if probe != 'none': # todo: make probing a module?
         log.info("Probing measurements...")
         results = sma.probe()
         all_available = all(results.values())
@@ -96,27 +133,14 @@ def run_with_config(config_file: str, probe: str):
     def wait_for_user() -> None:
         input("Hit Enter to to Stop Measuring...")
 
-    def workload_blocking() -> None:
-        SUT_URL = "http://teastore-webui"
-        tele = TeleLocustClient(SUT_URL)
-        tele.start_test_run(users=10, spawn_rate=2, run_time=f"30s", locustfile_path='locustfile.py')
-        log.info(f'Started test run with token: {tele.token}')  
-        while True:
-            status = tele.get_run_status()
-            log.info(f'Run status: {status}')
-            if status['status'] != 'running':
-                break
-            time.sleep(1)
-        log.info(f"Test run finished. {tele.get_run_status()}")
-        tele.download_run_data("")
-
-
 
     log.debug("Starting SMA run...")
     sma.setup(SMASession(
         name="TestSession"
     ))
-    sma.run(workload_blocking)
+
+    # todo: load via moduleconfig
+    sma.run(workload_controller.run_workload)
     sma.teardown()
 
     log.info("Sustainability Measurement Agent finished.")
