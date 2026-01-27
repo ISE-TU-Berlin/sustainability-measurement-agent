@@ -51,33 +51,35 @@ def run_with_config(config_file: str, probe: str):
     log.debug("Loading Modules...")
     log.debug(config.modules)
 
+    with sma.start_session() as session:
 
-    # workload_controller = WorkloadController()
-    # sma.register_sma_observer(workload_controller)
 
-    log.debug("Connecting to services...")
-    sma.connect()
+        # workload_controller = WorkloadController()
+        # sma.register_sma_observer(workload_controller)
 
-    if probe != 'none': # todo: make probing a module?
-        log.info("Probing measurements...")
-        results = sma.probe()
-        all_available = all(results.values())
-        for name, available in results.items():
-            if available:
-                log.info(f"✅ {name} is available.")
-            else:
-                log.warning(f"⚠️ {name} is NOT available.")
+        log.debug("Connecting to services...")
+        sma.connect()
 
-        if probe == 'dry':
-            log.info("Dry run complete. Exiting.")
-            sys.exit(0)
+        if probe != 'none': # todo: make probing a module?
+            log.info("Probing measurements...")
+            results = sma.probe()
+            all_available = all(results.values())
+            for name, available in results.items():
+                if available:
+                    log.info(f"✅ {name} is available.")
+                else:
+                    log.warning(f"⚠️ {name} is NOT available.")
 
-        if not all_available:
-            if probe == 'fail':
-                log.error("Not all measurements are available. Aborting.")
-                sys.exit(1)
-            elif probe == 'warn':
-                log.warning("Not all measurements are available. Continuing as per 'warn' setting.")
+            if probe == 'dry':
+                log.info("Dry run complete. Exiting.")
+                sys.exit(0)
+
+            if not all_available:
+                if probe == 'fail':
+                    log.error("Not all measurements are available. Aborting.")
+                    sys.exit(1)
+                elif probe == 'warn':
+                    log.warning("Not all measurements are available. Continuing as per 'warn' setting.")
 
 
 

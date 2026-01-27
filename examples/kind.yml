@@ -7,9 +7,11 @@ sma:
     telelocust:
       module: telelocust
       config:
-        sut_url: "http://teastore-webui"
+        sut_url: "http://teastore-webui.teastore.svc.cluster.local"
         users: 10
         ramp: 2
+        deploy: true
+        namespace: telelocust
   observation:
     # observation window mode: 
     # - trigger (python function that blocks),

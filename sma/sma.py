@@ -4,16 +4,17 @@ import hashlib
 import random
 import importlib
 
+from contextlib import contextmanager
 from logging import Logger, getLogger
 from time import sleep
-from typing import Optional
+from typing import Generator, Optional
 
 from sma.config import Config
 from sma.model import (
     SMAObserver, TriggerFunction, EnvironmentCollector,
     SMARun, SMASession, ReportMetadata
 )
-from sma.report import Report
+from sma.report import Report 
 from sma.service import ServiceException
 
 
@@ -36,12 +37,26 @@ class SustainabilityMeasurementAgent(object):
         self.logger.debug("Initializing Environment Collector...")
         self.environment_collector: Optional[EnvironmentCollector] = self.config.create_environment_observation()
         self.session: Optional[SMASession] = None
-
-        if meta is not None:
-            self.setup(meta)
+        self.meta_session: Optional[SMASession] = meta
 
         self.modules = {}
         self.load_modules()
+
+        # if meta is not None:
+        # now always call setup with or without given session:
+        # self.setup(meta) ---> now happening in start_session context manager
+
+    
+    @contextmanager
+    def start_session(self) -> Generator[None, None, None]:
+        self.logger.debug("Starting session...")
+        try:
+            self.setup(self.meta_session) # can be None
+            self.notify_observers("onSessionStart")
+            yield 
+        finally:
+            self.notify_observers("onSessionEnd")
+            self.teardown()
 
     def load_modules(self) -> None:
         """Load SMA modules as per configuration and reguister them as observers."""
@@ -69,9 +84,13 @@ class SustainabilityMeasurementAgent(object):
     def setup(self, session:SMASession):
         self.logger.debug("Setting up logger with session {session}")
         self.session = session
-        self.notify_observers("onSetup")
+        self.notify_observers("onSessionSetup")
 
     def notify_observers(self, event: str, **kwargs) -> None:
+        self.logger.info(f"Notifying observers of event: {event}")
+        if not (hasattr(SMAObserver, event)):
+            self.logger.warning(f"Observer does not implement event {event}")
+
         for observer in self.observers:
             method = getattr(observer, event, None)
             if callable(method):
@@ -84,7 +103,7 @@ class SustainabilityMeasurementAgent(object):
 
     def unregister_sma_observer(self, observer: SMAObserver) -> None:
         self.observers.remove(observer)
-    
+
     def connect(self) -> None:
         for k, client in self.config.services.items():
             self.logger.debug(f"Pinging service {k}...")
@@ -115,33 +134,7 @@ class SustainabilityMeasurementAgent(object):
                  
         return results
 
-    def observe_once(self, run_data: ReportMetadata) -> None:
-        """Observe (i.e., retrieve from target) measurements for a completed run and persist to disk.
-        
-        Args:
-            run_data: ReportMetadata containing timing and run identification data
-        """
-        rep = Report(metadata=run_data, config=self.config, data={}, environment=None)
 
-        queries = self.config.measurement_queries()
-        
-        for name, measurement in queries.items():   
-            try:
-                self.logger.info(f"Querying measurement: {name}")
-                #XXX: not a good pattern... should not use knowledge about internals of measurment..., labeling should happen during observation
-                df = measurement.observe(start=run_data.run.startTime, end=run_data.run.endTime)
-                df = measurement.label(treatment_start=run_data.run.treatment_start.timestamp(), treatment_end=run_data.run.treatment_end.timestamp(),
-                                       label_column="treatment", label="Treatment")
-                rep.set_data(name, df)
-            except ServiceException as e:
-                self.logger.error(f"Error Querying measurement {name}: {e}")
-
-        if self.environment_collector:
-            env = self.environment_collector.observe_environment(run_data.run)
-            rep.environment = env
-
-        rep.persist()
-        self.notify_observers("onReport", report=rep)
 
 
     def run(self, trigger: Optional[TriggerFunction] = None) -> None:
@@ -150,6 +143,8 @@ class SustainabilityMeasurementAgent(object):
         Args:
             trigger: Optional function for trigger/continuous modes that returns file-level metadata
         """
+
+        assert self.session is not None, "Session must be set before running, use with start_session context manager."
 
         mode = self.config.observation.mode
         self.logger.info(f"Observation mode: {mode}")
@@ -179,13 +174,13 @@ class SustainabilityMeasurementAgent(object):
         run_hash = make_run_hash(start_time)
 
         if window is not None:
-            self.notify_observers("onLeftStarted")
+            self.notify_observers("onLeftStart")
             self.logger.info(f"Waiting for left window: {window.left}s")
             sleep(window.left)
+            self.notify_observers("onLeftEnd")
 
         self.logger.info(f"Starting Treatment Phase")
-        self.notify_observers("onStart")
-
+        self.notify_observers("onTreatmentStart")
         treatment_start = datetime.datetime.now()
 
         trigger_meta = {}
@@ -211,13 +206,13 @@ class SustainabilityMeasurementAgent(object):
         treatment_end = datetime.datetime.now()
 
         self.logger.info(f"Treatment duration: {treatment_end - treatment_start}")
-        self.notify_observers("onEnd")
+        self.notify_observers("onTreatmentEnd")
 
         if window is not None:
+            self.notify_observers("onRightStart")
             self.logger.info(f"Waiting for right window: {window.right}s")
             sleep(window.right)
-            self.notify_observers("onRightFinished")
-
+            self.notify_observers("onRightEnd")
         end_time = datetime.datetime.now()
 
         self.logger.info(f"Total observation duration: {end_time - start_time}")
@@ -235,6 +230,35 @@ class SustainabilityMeasurementAgent(object):
             run=run_data,
         ))
 
+        self.notify_observers("onRunEnd", run=run_data)
+
+    def observe_once(self, run_data: ReportMetadata) -> None:
+        """Observe (i.e., retrieve from target) measurements for a completed run and persist to disk.
+        
+        Args:
+            run_data: ReportMetadata containing timing and run identification data
+        """
+        rep = Report(metadata=run_data, config=self.config, data={}, environment=None)
+
+        queries = self.config.measurement_queries()
+        
+        for name, measurement in queries.items():   
+            try:
+                self.logger.info(f"Querying measurement: {name}")
+                #XXX: not a good pattern... should not use knowledge about internals of measurment..., labeling should happen during observation
+                df = measurement.observe(start=run_data.run.startTime, end=run_data.run.endTime)
+                df = measurement.label(treatment_start=run_data.run.treatment_start.timestamp(), treatment_end=run_data.run.treatment_end.timestamp(),
+                                       label_column="treatment", label="Treatment")
+                rep.set_data(name, df)
+            except ServiceException as e:
+                self.logger.error(f"Error Querying measurement {name}: {e}")
+
+        if self.environment_collector:
+            env = self.environment_collector.observe_environment(run_data.run)
+            rep.environment = env
+
+        rep.persist()
+        self.notify_observers("onReport", report=rep)
 
     def deploy(self) -> None:
         raise NotImplementedError("Deployment is not yet implemented.") # todo: as module?
@@ -245,6 +269,7 @@ class SustainabilityMeasurementAgent(object):
     def verify_deployment(self) -> bool:
         raise NotImplementedError("Deployment verification is not yet implemented.")
 
+    # now handled via context manager 
     def teardown(self) -> None:
         self.notify_observers("onTeardown")
         #TODO: clean up clients, connections, etc.

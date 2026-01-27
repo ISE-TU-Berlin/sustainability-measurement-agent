@@ -8,6 +8,8 @@ from modules.telelocust.client import TeleLocustClient
 from sma.model import SMAObserver
 from sma.report import Report
 
+WORKLOAD_POLLING_FREQUENCY_SECONDS = 0.3
+
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
@@ -41,21 +43,6 @@ class TelelocustSmaModule(SMAObserver):
         log.info(f"Test run finished. {self.telelocust_client.get_run_status()}")
 
 
-    def onSetup(self) -> None:
-        log.info("SMA setup started.")
-
-    def onLeftStarted(self) -> None:
-        log.info("Left window started.")
-
-    def onStart(self) -> None:
-        log.info("Observation started.")
-
-    def onEnd(self) -> None:
-        log.info("Observation ended.")
-
-    def onRightFinished(self) -> None:
-        log.info("Right window finished.")
-
     def onReport(self, report: Report) -> None:
         workload_zip_path = f"{report.location}/telelocust_run_data.zip"
         log.info(f"Downloading TeleLocust workload data to {workload_zip_path}...")
@@ -67,5 +54,4 @@ class TelelocustSmaModule(SMAObserver):
             zip_ref.extractall(unzip_path)
         log.info("TeleLocust data extracted successfully.")
 
-    def onTeardown(self) -> None:
-        log.info("SMA teardown completed.")
+

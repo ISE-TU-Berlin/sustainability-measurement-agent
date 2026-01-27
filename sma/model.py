@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Protocol, Any
 import pandas as pd
 
+# from sma.report import Report # to avoid circular import
+
 
 # ============================================================================
 # Protocols
@@ -29,23 +31,41 @@ class DataframeResource(Protocol):
 
 class SMAObserver(Protocol):
     """Observer protocol for SMA lifecycle events."""
-    def onSetup(self) -> None:
+
+    def onSessionStart(self) -> None:
         pass
 
-    def onLeftStarted(self) -> None:
+    def onRunStart(self) -> None:
         pass
 
-    def onStart(self) -> None:
+    def onLeftWindowStart(self) -> None:
         pass
 
-    def onEnd(self) -> None:
+    def onLeftWindowEnd(self) -> None:
         pass
 
-    def onRightFinished(self) -> None:
+    def onTreatmentStart(self) -> None:
         pass
 
-    def onTeardown(self) -> None:
+    def onTreatmentEnd(self) -> None:
         pass
+
+    def onRightWindowStart(self) -> None:
+        pass
+
+    def onRightWindowEnd(self) -> None:
+        pass
+
+    # should mention the passing of report but import will be circular, dealing with that later
+    def onReport(self, report=None) -> None: 
+        pass
+
+    def onRunEnd(self, run=None) -> None:
+        pass
+
+    def onSessionEnd(self) -> None:
+        pass
+
 
 
 class TriggerFunction(Protocol):
