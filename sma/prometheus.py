@@ -590,6 +590,7 @@ def measurement_config_to_prometheus_query(
         targets=targets,
     )
 
+# TODO: move to module
 class PrometheusEnvironmentCollector:
     def __init__(self, prometheus_client: Prometheus) -> None:
 

@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["sma"]
+packages = ["sma", "modules", "cli"]
 
 [project]
 name = "sustainability-measurement-agent"
@@ -22,7 +22,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
     "Topic :: System :: Monitoring",
 ]
-dependencies = ["kubernetes", "pyyaml", "pandas>=2.3.0", "numpy<2", "requests", "tables==3.9.2"]
+dependencies = ["kubernetes", "pyyaml", "pandas>=2.3.0", "requests", "click", "rich"]
 
 [project.optional-dependencies]
 test = ["pytest>=7.0", "pytest-kubernetes>=0.3.0"]
@@ -43,3 +43,5 @@ markers = [
 ]
 
 
+[project.scripts]
+sma = "cli.main:cli"

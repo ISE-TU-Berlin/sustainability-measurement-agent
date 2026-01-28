@@ -2,17 +2,12 @@ import sys
 import os
 import logging
 import click
-import time
 
-
-from unittest import runner
-from rich.logging import RichHandler
+from sma import ReportIO
 from sma.log import initialize_logging
 
 from sma import SustainabilityMeasurementAgent
 from sma import Config, SMAObserver
-from sma import Report
-from sma.model import SMASession
 
 logLevel = os.getenv("LOGLEVEL", "INFO").upper()
 # already initialized through the module when importing SMA, so we'll redefine with rich logging
@@ -97,12 +92,34 @@ def run(config_file: str, probe: str):
 
     log.info("Sustainability Measurement Agent finished.")
 
-@cli.command()
-@click.argument('report_path', type=click.Path(exists=True))
+
+@cli.command(short_help="""Attempts to fetches measurements again using the provided configuration file.""")
+@click.argument('config_file', type=click.Path(exists=True), )
+@click.argument('report_location', type=click.Path(exists=True))
+@click.option('--loglevel', default=os.getenv('LOGLEVEL', 'WARNING'))
+@click.option("--overwrite", is_flag=True, help="Overwrite existing measurements")
+def fetch(config_file: str, report_location: str):
+    """
+    fetch config_file report_location
+
+    config_file: path to the configuration file
+    report_location: path to the report location
+    """
+    print("")
+
+@cli.command(help="Lists all reports for a given configuration file.")
 @click.argument('config_file', type=click.Path(exists=True))
-def reobserve(report_path: str, config_file: str):
-    """Re-observe a previous SMA report to gather additional data or verify results."""
-    raise NotImplementedError("Re-observe functionality is not yet implemented.")
+def list(config_file: str):
+    """
+    list
+
+        config_file: path to the configuration file
+    """
+    cnf = Config.from_file(config_file)
+    reports = ReportIO.load_from_config(cnf)
+
+    for report in reports:
+        print(report.run_data.runHash, report.location)
 
 if __name__ == '__main__':
     cli()

@@ -103,7 +103,7 @@ class ReportIO:
           └── metric2.csv
     """
 
-    CURRENT_VERSION = "1.0"
+    CURRENT_VERSION = "1.1"
     MANIFEST_FILE = "manifest.json"
     SESSION_FILE = "session.json"
     RUN_FILE = "run.json"
@@ -222,6 +222,7 @@ class ReportIO:
         report.logger.info(f"Report persisted successfully to {location}")
         return location
 
+    #TODO: XXX Remove hdfs dependency and change to a more sensible format...
     @staticmethod
     def _serialize_environment(environment: Environment, filepath: str) -> None:
         """Serialize environment data to HDF5 file using as_dataframe method."""
@@ -386,6 +387,8 @@ class ReportIO:
 
             if version == "1.0":
                 return ReportIO._load_v1_0(location, manifest, config)
+            elif version == "1.1":
+                return ReportIO._load_v1_1(location, manifest, config)
             else:
                 logger.warning(f"Unknown report version {version}, attempting compatible load")
                 return ReportIO._load_v1_0(location, manifest, config)
@@ -393,8 +396,7 @@ class ReportIO:
             raise ValueError(f"Report location {location} does not contain a manifest file.")
 
     @staticmethod
-    def _load_v1_0(location: str, manifest: dict, config: Config) -> "Report":
-        """Load version 1.0 report format with manifest."""
+    def _load_v1_1(location: str, manifest: dict, config: Config) -> "Report":
         logger = getLogger("sma.Report")
 
         # Load session metadata
@@ -445,6 +447,64 @@ class ReportIO:
             if os.path.exists(env_path):
                 environment = ReportIO._deserialize_environment(env_path)
                 logger.info("Loaded environment data")
+        metadata = ReportMetadata(session=session, run=run)
+
+        return Report(
+            metadata=metadata,
+            config=config,
+            data=data,
+            environment=environment
+        )
+
+
+    @staticmethod
+    def _load_v1_0(location: str, manifest: dict, config: Config) -> "Report":
+        """Load version 1.0 report format with manifest."""
+        logger = getLogger("sma.Report")
+
+        # Load session metadata
+        session_path = os.path.join(location, manifest["files"]["session"])
+        with open(session_path, "r") as f:
+            session_data = json.load(f)
+
+        session = SMASession(
+            name=session_data["name"],
+            extras=session_data.get("extras")
+        )
+
+        # Load run metadata
+        run_path = os.path.join(location, manifest["files"]["run"])
+        with open(run_path, "r") as f:
+            run_data = json.load(f)
+
+        run = SMARun(
+            startTime=datetime.datetime.strptime(run_data["startTime"], "%Y_%m_%d_%H_%M_%S"),
+            endTime=datetime.datetime.strptime(run_data["endTime"], "%Y_%m_%d_%H_%M_%S"),
+            treatment_start=datetime.datetime.strptime(run_data["treatment_start"], "%Y_%m_%d_%H_%M_%S"),
+            treatment_end=datetime.datetime.strptime(run_data["treatment_end"], "%Y_%m_%d_%H_%M_%S"),
+            runHash=run_data["runHash"],
+            user_data=run_data.get("user_data")
+        )
+
+        # Load all data files from manifest
+        data = {}
+        data_dir = os.path.join(location, ReportIO.DATA_DIR)
+        report_format = manifest.get("format", "csv")
+
+        for name, file_info in manifest["data_files"].items():
+            filepath = os.path.join(data_dir, file_info["filename"])
+
+            if report_format == "csv":
+                data[name] = pd.read_csv(filepath, index_col=0, parse_dates=True)
+            else:
+                logger.warning(f"Unsupported format {report_format}, attempting CSV load")
+                data[name] = pd.read_csv(filepath, index_col=0, parse_dates=True)
+
+            logger.debug(f"Loaded measurement '{name}' from {filepath}")
+
+        # Load environment if present
+        environment = None
+        logger.warning("Environment data not available in version 1.0 reports.")
 
         metadata = ReportMetadata(session=session, run=run)
 
