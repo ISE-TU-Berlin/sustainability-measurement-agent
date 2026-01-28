@@ -21,7 +21,11 @@ logging.basicConfig(format="%(name)s: %(message)s")
 log = logging.getLogger("sma.main")
 
 
-@click.command()
+@click.group()
+def cli():
+    pass
+
+@cli.command()
 @click.argument('config_file', type=click.Path(exists=True))
 @click.option('--probe', type=click.Choice(
     ['none', 'dry', 'warn', 'fail']),
@@ -32,7 +36,7 @@ log = logging.getLogger("sma.main")
     'fail' will abort execution if any meausurement is not present,
     'none' will skip probing."""
 )
-def run_with_config(config_file: str, probe: str):
+def run(config_file: str, probe: str):
     """Run the Sustainability Measurement Agent with a given configuration file.
 
       You can use e.g. examples/minimal.yaml
@@ -51,51 +55,54 @@ def run_with_config(config_file: str, probe: str):
     log.debug("Loading Modules...")
     log.debug(config.modules)
 
-    with sma.start_session() as session:
-
 
         # workload_controller = WorkloadController()
         # sma.register_sma_observer(workload_controller)
 
-        log.debug("Connecting to services...")
-        sma.connect()
+    log.debug("Connecting to services...")
+    sma.connect()
 
-        if probe != 'none': # todo: make probing a module?
-            log.info("Probing measurements...")
-            results = sma.probe()
-            all_available = all(results.values())
-            for name, available in results.items():
-                if available:
-                    log.info(f"✅ {name} is available.")
-                else:
-                    log.warning(f"⚠️ {name} is NOT available.")
+    if probe != 'none': # todo: make probing a module?
+        log.info("Probing measurements...")
+        results = sma.probe()
+        all_available = all(results.values())
+        for name, available in results.items():
+            if available:
+                log.info(f"✅ {name} is available.")
+            else:
+                log.warning(f"⚠️ {name} is NOT available.")
 
-            if probe == 'dry':
-                log.info("Dry run complete. Exiting.")
-                sys.exit(0)
+        if probe == 'dry':
+            log.info("Dry run complete. Exiting.")
+            sys.exit(0)
 
-            if not all_available:
-                if probe == 'fail':
-                    log.error("Not all measurements are available. Aborting.")
-                    sys.exit(1)
-                elif probe == 'warn':
-                    log.warning("Not all measurements are available. Continuing as per 'warn' setting.")
+        if not all_available:
+            if probe == 'fail':
+                log.error("Not all measurements are available. Aborting.")
+                sys.exit(1)
+            elif probe == 'warn':
+                log.warning("Not all measurements are available. Continuing as per 'warn' setting.")
 
 
 
 
     log.debug("Starting SMA run...")
-    sma.setup(SMASession(
-        name="TestSession"
-    ))
+    # sma.setup(SMASession(
+    #     name="TestSession"
+    # ))
 
-    # todo: load via moduleconfig
-    sma.run()
-    sma.teardown()
+    with sma.start_session() as session:        
+        sma.run()
+        sma.teardown()
 
     log.info("Sustainability Measurement Agent finished.")
 
-
+@cli.command()
+@click.argument('report_path', type=click.Path(exists=True))
+@click.argument('config_file', type=click.Path(exists=True))
+def reobserve(report_path: str, config_file: str):
+    """Re-observe a previous SMA report to gather additional data or verify results."""
+    raise NotImplementedError("Re-observe functionality is not yet implemented.")
 
 if __name__ == '__main__':
-    run_with_config()
+    cli()
