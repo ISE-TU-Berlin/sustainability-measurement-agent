@@ -20,14 +20,13 @@ from __future__ import annotations
 
 import re
 from typing import Any, Dict
-from typing import Optional, List
+from typing import Optional
 
 from sma.model import (
-    EnvironmentCollector, ReportConfig, MeasurementConfig,
-    ObservationTarget, ObservationWindow, ObservationConfig, ObservationEnvironmentConfig
+    ReportConfig, MeasurementConfig,
+    ObservationTarget, ObservationWindow, ObservationConfig
 )
-
-from sma.prometheus import Prometheus, PrometheusMetric, PrometheusEnvironmentCollector, measurement_config_to_prometheus_query
+from sma.prometheus import Prometheus, PrometheusMetric, measurement_config_to_prometheus_query
 from sma.service import ServiceClient
 
 
@@ -166,12 +165,8 @@ class Config:
             ot = ObservationTarget(match_labels=match_labels)
             named_targets[name] = ot
 
-        obs_env_raw = obs_raw.get("environment", {}) or {}
-        obs_env: Optional[ObservationEnvironmentConfig] = None
-        if "collector" in obs_env_raw:
-            obs_env = ObservationEnvironmentConfig(collector=obs_env_raw["collector"])
 
-        observation = ObservationConfig(mode=mode, module_trigger=module_trigger, window=window, targets=list(named_targets.values()), environment=obs_env)
+        observation = ObservationConfig(mode=mode, module_trigger=module_trigger, window=window, targets=list(named_targets.values()))
 
         # Measurements
         measurements_raw = sma.get("measurements", []) or []
@@ -222,14 +217,3 @@ class Config:
         if client is None:
             raise RuntimeError("no prometheus service configured")
         return measurement_config_to_prometheus_query(measurement, name=measurement.name, client=client, named_targets=self._named_targets)
-
-    def create_environment_observation(self) -> Optional[EnvironmentCollector]:
-        if self.observation.environment:
-            collector_name = self.observation.environment.collector
-            if collector_name == "prometheus":
-                if self.prometheus_client() is None:
-                    raise RuntimeError("no prometheus service configured")
-                return PrometheusEnvironmentCollector(self.prometheus_client())
-            else:
-                raise ValueError(f"Unknown environment collector '{collector_name}'")
-        return None

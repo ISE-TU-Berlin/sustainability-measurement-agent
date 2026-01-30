@@ -12,10 +12,8 @@ import pandas as pd
 
 from sma import utils
 from sma.config import Config
-from sma.enviroment import Environment
 from sma.model import (
     SMASession, SMARun, ReportMetadata,
-    Node, Pod, Container, Process
 )
 
 
@@ -28,14 +26,13 @@ class Report:
     It can be persisted to disk or loaded from disk.
     
     """
-    def __init__(self, metadata: ReportMetadata, config: Config, data: Dict[str, pd.DataFrame], environment: Optional[
-        Environment]) -> None:
+    def __init__(self, metadata: ReportMetadata, config: Config, data: Dict[str, pd.DataFrame]) -> None:
         self.logger = getLogger("sma.Report")
 
         self.metadata : ReportMetadata = metadata
         self.run_data : SMARun = metadata.run  # Convenience property for backward compatibility
         self.config : Config = config
-        self.environment : Optional[Environment] = environment # We should store meta data about the pods and nodes here
+
         self.observations : Dict[str, pd.DataFrame] = data
 
         
@@ -97,7 +94,6 @@ class ReportIO:
       ├── session.json           # Session metadata
       ├── run.json               # Run metadata
       ├── config.yaml            # Copy of measurement config
-      ├── environment.json       # Environment data (optional)
       └── data/
           ├── metric1.csv        # One file per measurement
           └── metric2.csv
@@ -108,7 +104,6 @@ class ReportIO:
     SESSION_FILE = "session.json"
     RUN_FILE = "run.json"
     CONFIG_FILE = "config.yaml"
-    ENVIRONMENT_FILE = "environment.h5"
     DATA_DIR = "data"
 
     @staticmethod
@@ -196,13 +191,6 @@ class ReportIO:
             # Fallback: save basic config info
             report.logger.warning("No config file available to copy.")
 
-        # 5. Save environment data if present
-        has_environment = False
-        if report.environment:
-            ReportIO._serialize_environment(report.environment, os.path.join(location, ReportIO.ENVIRONMENT_FILE))
-            has_environment = True
-            report.logger.info("Saved environment data")
-
         # 6. Save manifest (enables version-aware loading)
         manifest = {
             "version": ReportIO.CURRENT_VERSION,
@@ -213,7 +201,6 @@ class ReportIO:
                 "session": ReportIO.SESSION_FILE,
                 "run": ReportIO.RUN_FILE,
                 "config": ReportIO.CONFIG_FILE,
-                "environment": ReportIO.ENVIRONMENT_FILE if has_environment else None
             }
         }
         with open(os.path.join(location, ReportIO.MANIFEST_FILE), "w") as f:
@@ -221,95 +208,6 @@ class ReportIO:
 
         report.logger.info(f"Report persisted successfully to {location}")
         return location
-
-    #TODO: XXX Remove hdfs dependency and change to a more sensible format...
-    @staticmethod
-    def _serialize_environment(environment: Environment, filepath: str) -> None:
-        """Serialize environment data to HDF5 file using as_dataframe method."""
-        # Get dataframes dict from environment
-        try:
-            dataframes_dict = environment.as_dataframe()
-
-            # Save each dataframe to HDF5 with appropriate keys
-            with pd.HDFStore(filepath, mode='w') as store:
-                for key, df in dataframes_dict.items():
-                    if df is not None and not df.empty:
-                        store[key] = df
-        except Exception as e:
-            getLogger("sma.Report").error(f"Failed to serialize environment: {e}")
-            raise
-
-
-    @staticmethod
-    def _deserialize_environment(filepath: str) -> Environment:
-        """Deserialize environment data from HDF5 file."""
-        environment = Environment()
-
-        try:
-            with pd.HDFStore(filepath, mode='r') as store:
-                # Load nodes
-                if 'nodes' in store:
-                    nodes_df = store['nodes']
-                    environment.nodes = []
-                    # Group by node name to reconstruct labels dict
-                    for node_name in nodes_df['node'].unique():
-                        node_rows = nodes_df[nodes_df['node'] == node_name]
-                        labels = dict(zip(node_rows['label'], node_rows['value']))
-                        environment.nodes.append(Node(name=node_name, labels=labels))
-                else:
-                    environment.nodes = []
-
-                # Load pods
-                if 'pods' in store:
-                    pods_df = store['pods']
-                    environment.pods = []
-                    for _, row in pods_df.iterrows():
-                        environment.pods.append(Pod(
-                            name=row['pod'],
-                            namespace=row['namespace'],
-                            node_name=row['node'],
-                            labels=row['labels'] if pd.notna(row['labels']) else {}
-                        ))
-                else:
-                    environment.pods = []
-
-                # Load containers
-                if 'containers' in store:
-                    containers_df = store['containers']
-                    environment.containers = []
-                    for _, row in containers_df.iterrows():
-                        environment.containers.append(Container(
-                            name=row['container'],
-                            pod_name=row['pod'],
-                            namespace=row['namespace'],
-                            node_name=row['node'],
-                            labels=row['labels'] if pd.notna(row['labels']) else {}
-                        ))
-                else:
-                    environment.containers = []
-
-                # Load processes
-                if 'processes' in store:
-                    processes_df = store['processes']
-                    environment.processes = []
-                    for _, row in processes_df.iterrows():
-                        process = Process(
-                            pid=int(row['pid']),
-                            name=row['name']
-                        )
-                        process.container_name = row.get('container') if pd.notna(row.get('container')) else None
-                        process.pod_name = row.get('pod') if pd.notna(row.get('pod')) else None
-                        process.namespace = row.get('namespace') if pd.notna(row.get('namespace')) else None
-                        process.node_name = row.get('node') if pd.notna(row.get('node')) else None
-                        environment.processes.append(process)
-                else:
-                    environment.processes = []
-
-        except Exception as e:
-            getLogger("sma.Report").error(f"Failed to deserialize environment from {filepath}: {e}")
-            raise
-
-        return environment
 
     @staticmethod
     def load_from_config(config: Config, **search_overrides) -> List["Report"]:
@@ -439,21 +337,13 @@ class ReportIO:
 
             logger.debug(f"Loaded measurement '{name}' from {filepath}")
 
-        # Load environment if present
-        environment = None
-        env_file = manifest["files"].get("environment")
-        if env_file:
-            env_path = os.path.join(location, env_file)
-            if os.path.exists(env_path):
-                environment = ReportIO._deserialize_environment(env_path)
-                logger.info("Loaded environment data")
+
         metadata = ReportMetadata(session=session, run=run)
 
         return Report(
             metadata=metadata,
             config=config,
             data=data,
-            environment=environment
         )
 
 
@@ -503,8 +393,7 @@ class ReportIO:
             logger.debug(f"Loaded measurement '{name}' from {filepath}")
 
         # Load environment if present
-        environment = None
-        logger.warning("Environment data not available in version 1.0 reports.")
+        logger.warning("Environment data loading not available in version 1.0 reports.")
 
         metadata = ReportMetadata(session=session, run=run)
 
@@ -512,5 +401,4 @@ class ReportIO:
             metadata=metadata,
             config=config,
             data=data,
-            environment=environment
         )

@@ -3,7 +3,7 @@ import os
 import logging
 import click
 
-from sma import ReportIO
+from sma import ReportIO, SMASession
 from sma.log import initialize_logging
 
 from sma import SustainabilityMeasurementAgent
@@ -31,7 +31,8 @@ def cli():
     'fail' will abort execution if any meausurement is not present,
     'none' will skip probing."""
 )
-def run(config_file: str, probe: str):
+@click.option('--cli-trigger', is_flag=True, help="Provides a basic manual trigger waiting for user input.")
+def run(config_file: str, probe: str, cli_trigger: bool):
     """Run the Sustainability Measurement Agent with a given configuration file.
 
       You can use e.g. examples/minimal.yaml
@@ -44,7 +45,7 @@ def run(config_file: str, probe: str):
     config = Config.from_file(config_file)
 
     log.debug("Creating Agent...")
-    sma = SustainabilityMeasurementAgent(config)
+    sma = SustainabilityMeasurementAgent(config, meta=SMASession(name="TestSession"))
 
     
     log.debug("Loading Modules...")
@@ -86,8 +87,15 @@ def run(config_file: str, probe: str):
     #     name="TestSession"
     # ))
 
-    with sma.start_session() as session:        
-        sma.run()
+    def wait_for_trigger():
+        input("Press Enter to end the run...")
+        return
+
+    with sma.start_session() as session:
+        if cli_trigger:
+            sma.run(wait_for_trigger)
+        else:
+            sma.run()
         sma.teardown()
 
     log.info("Sustainability Measurement Agent finished.")
@@ -96,26 +104,33 @@ def run(config_file: str, probe: str):
 @cli.command(short_help="""Attempts to fetches measurements again using the provided configuration file.""")
 @click.argument('config_file', type=click.Path(exists=True), )
 @click.argument('report_location', type=click.Path(exists=True))
-@click.option('--loglevel', default=os.getenv('LOGLEVEL', 'WARNING'))
 @click.option("--overwrite", is_flag=True, help="Overwrite existing measurements")
-def fetch(config_file: str, report_location: str):
+def fetch(config_file: str, report_location: str, overwrite: bool):
     """
     fetch config_file report_location
 
     config_file: path to the configuration file
     report_location: path to the report location
     """
-    print("")
+    cnf = Config.from_file(config_file)
+    log.debug("Loaded configuration...")
+    report = ReportIO.load_from_location(report_location, cnf)
+    log.debug("Loaded report")
+    sma = SustainabilityMeasurementAgent(cnf)
+    log.debug("Created SMA Argent")
+
+    #TODO: deal with overwrite flag...
+    sma.observe_once(report.metadata)
 
 @cli.command(help="Lists all reports for a given configuration file.")
 @click.argument('config_file', type=click.Path(exists=True))
 def list(config_file: str):
     """
     list
-
         config_file: path to the configuration file
     """
     cnf = Config.from_file(config_file)
+    log.debug("Loaded configuration...")
     reports = ReportIO.load_from_config(cnf)
 
     for report in reports:

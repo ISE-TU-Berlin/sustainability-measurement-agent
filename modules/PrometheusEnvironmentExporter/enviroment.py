@@ -3,9 +3,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 import logging
 
-from sma.model import (
-    DataframeResource, Node, Pod, Container, Process
-)
+from .model import Node, Pod, Container, Process, DataframeResource
 
 logger = logging.getLogger("sma.environment")
 
@@ -21,12 +19,12 @@ def as_merged_df(data:Optional[List[DataframeResource]]) -> pd.DataFrame:
     dt = None
     try:
         for df in data:
-            data = df.to_dataframe()
+            df_data = df.to_dataframe()
             if dt is None:
-                dt = data
+                dt = df_data
             else:
-                dt = pd.concat([dt, data])
-    except TypeError as e:
+                dt = pd.concat([dt, df_data])
+    except Exception as e:
         logger.warning(f"Error ({e}) converting environment data to dataframe: {data}")
         return pd.DataFrame()
 

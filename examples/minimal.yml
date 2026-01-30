@@ -2,18 +2,22 @@ sma:
   version: 0.0.1
   services:
     prometheus:
-      address: http://130.149.158.132:32426
+      address: http://130.149.158.130:32426
   observation:
     mode: trigger # triggger (python function that blocks), timer (based on window settings), continuous (collects data until stopped, with python function that blocks)
     window:
-      left: 10s
-      right: 10s
-      duration: 10s
+      left: 1s
+      right: 1s
+      duration: 5s
     targets:
       - name: suo
         namespace: kubeai
+  modules:
     environment:
-      collector: prometheus
+      module: PrometheusEnvironmentExporter
+      config:
+        prometheus:
+          address: http://130.149.158.130:32426
   measurements:
     # we are using python string templating, you can (and should) specify where additional labels with ${SMA_SELECTORS} otherwise results might be unfiltered
     - system_CPU: # name of the measurment in the report

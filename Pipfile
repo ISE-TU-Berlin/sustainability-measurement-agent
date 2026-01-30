@@ -16,6 +16,7 @@ pyproject-pipenv = "*"
 build = "*"
 ipykernel = "*"
 pytest = "*"
+pyarrow = "*"
 
 [requires]
 python_version = "3.9"
