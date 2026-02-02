@@ -102,7 +102,7 @@ class TelelocustSmaModule(SMAObserver):
             users=self.config.get("users", 10),
             spawn_rate=self.config.get("spawn_rate", 2), 
             run_time=self.config.get("run_time", "30s"),
-            locustfile_path=None # todo: allow specifying locustfile URL as well
+            locustfile_path=self.config.get("locustfile") # todo: allow specifying locustfile URL as well
             )
         log.info(f'Started test run with token: {self.telelocust_client.token}')  
         while True:

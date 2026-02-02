@@ -7,7 +7,8 @@ sma:
     telelocust:
       module: telelocust
       config:
-        sut_url: "http://teastore-webui.teastore.svc.cluster.local"
+        sut_url: "http://teastore-webui.teastore.svc.cluster.local/tools.descartes.teastore.webui"
+        locustfile: "./local/Teastore/examples/locust/locustfile.py"
         users: 10
         ramp: 2
         deploy: true
