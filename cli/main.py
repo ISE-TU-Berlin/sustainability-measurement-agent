@@ -96,7 +96,7 @@ def run(config_file: str, probe: str, cli_trigger: bool):
             sma.run(wait_for_trigger)
         else:
             sma.run()
-        sma.teardown()
+        # sma.teardown() ## automatically called at the end of with block
 
     log.info("Sustainability Measurement Agent finished.")
 
