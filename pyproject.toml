@@ -27,6 +27,9 @@ dependencies = ["kubernetes", "pyyaml", "pandas>=2.3.0", "numpy<2", "requests", 
 [project.optional-dependencies]
 test = ["pytest>=7.0", "pytest-kubernetes>=0.3.0"]
 
+[project.scripts]
+run = "main.cli:cli"
+
 
 [project.urls]
 Homepage = "https://github.com/ISE-TU-Berlin/sustainability-measurement-agent"

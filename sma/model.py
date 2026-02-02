@@ -32,6 +32,9 @@ class DataframeResource(Protocol):
 class SMAObserver(Protocol):
     """Observer protocol for SMA lifecycle events."""
 
+    def onSetup(self) -> None:
+        pass
+
     def onSessionStart(self) -> None:
         pass
 
@@ -64,6 +67,9 @@ class SMAObserver(Protocol):
         pass
 
     def onSessionEnd(self) -> None:
+        pass
+
+    def onTeardown(self) -> None:
         pass
 
 

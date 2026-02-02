@@ -51,7 +51,10 @@ class SustainabilityMeasurementAgent(object):
     def start_session(self) -> Generator[None, None, None]:
         self.logger.debug("Starting session...")
         try:
-            self.setup(self.meta_session) # can be None
+            if self.meta_session:
+                self.setup(self.meta_session)
+            else:
+                self.setup(SMASession(name=f"SMA Session {datetime.datetime.now().isoformat()}"))
             self.notify_observers("onSessionStart")
             yield 
         finally:
@@ -82,9 +85,9 @@ class SustainabilityMeasurementAgent(object):
 
 
     def setup(self, session:SMASession):
+        self.notify_observers("onSetup")
         self.logger.debug("Setting up logger with session {session}")
         self.session = session
-        self.notify_observers("onSessionSetup")
 
     def notify_observers(self, event: str, **kwargs) -> None:
         self.logger.info(f"Notifying observers of event: {event}")
@@ -271,6 +274,7 @@ class SustainabilityMeasurementAgent(object):
 
     # now handled via context manager 
     def teardown(self) -> None:
+        self.notify_observers("onSessionEnd")
         self.notify_observers("onTeardown")
         #TODO: clean up clients, connections, etc.
 
