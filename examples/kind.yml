@@ -12,6 +12,7 @@ sma:
         ramp: 2
         deploy: true
         namespace: telelocust
+        port_forward: True
   observation:
     # observation window mode: 
     # - trigger (python function that blocks),
