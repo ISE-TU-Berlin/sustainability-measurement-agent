@@ -1,9 +1,8 @@
 
 import datetime
 import hashlib
-import random
 import importlib
-
+import random
 from contextlib import contextmanager
 from logging import Logger, getLogger
 from time import sleep
@@ -11,10 +10,10 @@ from typing import Generator, Optional
 
 from sma.config import Config
 from sma.model import (
-    SMAObserver, TriggerFunction, EnvironmentCollector,
+    SMAObserver, TriggerFunction,
     SMARun, SMASession, ReportMetadata
 )
-from sma.report import Report 
+from sma.report import Report
 from sma.service import ServiceException
 
 
@@ -34,8 +33,6 @@ class SustainabilityMeasurementAgent(object):
         self.logger: Logger = getLogger("sma.agent")
         self.observers: list[SMAObserver] = observers
 
-        self.logger.debug("Initializing Environment Collector...")
-        self.environment_collector: Optional[EnvironmentCollector] = self.config.create_environment_observation()
         self.session: Optional[SMASession] = None
         self.meta_session: Optional[SMASession] = meta
 
@@ -235,13 +232,13 @@ class SustainabilityMeasurementAgent(object):
 
         self.notify_observers("onRunEnd", run=run_data)
 
-    def observe_once(self, run_data: ReportMetadata) -> None:
+    def observe_once(self, run_data: ReportMetadata, overwrite: bool = False) -> None:
         """Observe (i.e., retrieve from target) measurements for a completed run and persist to disk.
         
         Args:
             run_data: ReportMetadata containing timing and run identification data
         """
-        rep = Report(metadata=run_data, config=self.config, data={}, environment=None)
+        rep = Report(metadata=run_data, config=self.config, data={})
 
         queries = self.config.measurement_queries()
         
@@ -255,10 +252,6 @@ class SustainabilityMeasurementAgent(object):
                 rep.set_data(name, df)
             except ServiceException as e:
                 self.logger.error(f"Error Querying measurement {name}: {e}")
-
-        if self.environment_collector:
-            env = self.environment_collector.observe_environment(run_data.run)
-            rep.environment = env
 
         rep.persist()
         self.notify_observers("onReport", report=rep)

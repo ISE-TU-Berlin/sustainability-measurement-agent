@@ -8,7 +8,7 @@ Config classes are kept separate in config.py.
 import datetime
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Protocol, Any
-import pandas as pd
+
 
 # from sma.report import Report # to avoid circular import
 
@@ -22,11 +22,6 @@ class SMAMetadata(Protocol):
     def to_dict(self, kwargs: Optional[dict]) -> dict:
         ...
 
-
-class DataframeResource(Protocol):
-    """Protocol for resources that can be converted to pandas DataFrames."""
-    def to_dataframe(self) -> pd.DataFrame:
-        pass
 
 
 class SMAObserver(Protocol):
@@ -77,12 +72,6 @@ class SMAObserver(Protocol):
 class TriggerFunction(Protocol):
     """Protocol for trigger functions that initiate measurements."""
     def __call__(self) -> Optional[dict]:
-        pass
-
-
-class EnvironmentCollector(Protocol):
-    """Protocol for environment data collectors."""
-    def observe_environment(self, run: "SMARun") -> "Environment":
         pass
 
 
@@ -193,13 +182,6 @@ class ObservationWindow:
     right: int
     duration: int
 
-
-@dataclass
-class ObservationEnvironmentConfig:
-    """Configuration for environment observation."""
-    collector: str
-
-
 @dataclass
 class ObservationConfig:
     """Configuration for observation behavior."""
@@ -207,82 +189,7 @@ class ObservationConfig:
     window: Optional[ObservationWindow]
     module_trigger: Optional[str] = None
     targets: Optional[List[ObservationTarget]] = None
-    environment: Optional[ObservationEnvironmentConfig] = None
 
-
-# ============================================================================
-# Environment Models
-# ============================================================================
-
-class EphemeralResource:
-    """Base class for resources with a lifecycle."""
-    lifetime_start: datetime.datetime
-    lifetime_end: Optional[datetime.datetime] = None
-    events: Optional[pd.Series] = None
-
-
-@dataclass
-class Node(DataframeResource):
-    """Kubernetes node representation."""
-    name: str
-    labels: Dict[str, str]
-
-    def to_dataframe(self) -> pd.DataFrame:
-        df_structure = []
-        for k, v in self.labels.items():
-            df_structure.append((self.name, k, v))
-        return pd.DataFrame(df_structure, columns=["node", "label", "value"])
-
-
-@dataclass
-class Pod(EphemeralResource, DataframeResource):
-    """Kubernetes pod representation."""
-    name: str
-    namespace: str
-    node_name: str
-    labels: Dict[str, str]
-
-    def to_dataframe(self) -> pd.DataFrame:
-        df_structure = [(self.name, self.namespace, self.node_name, self.lifetime_start,
-                        self.lifetime_end, self.events, self.labels)]
-        return pd.DataFrame(df_structure, columns=["pod", "namespace", "node",
-                                                   "lifetime_start", "lifetime_end",
-                                                   "events", "labels"])
-
-
-@dataclass
-class Container(EphemeralResource, DataframeResource):
-    """Kubernetes container representation."""
-    name: str
-    pod_name: str
-    namespace: str
-    node_name: str
-    labels: Dict[str, str]
-
-    def to_dataframe(self) -> pd.DataFrame:
-        df_structure = [(self.name, self.pod_name, self.namespace, self.node_name,
-                        self.lifetime_start, self.lifetime_end, self.events, self.labels)]
-        return pd.DataFrame(df_structure, columns=["container", "pod", "namespace", "node",
-                                                   "lifetime_start", "lifetime_end",
-                                                   "events", "labels"])
-
-
-class Process(EphemeralResource, DataframeResource):
-    """Process representation."""
-    pid: int
-    name: str
-    container_name: Optional[str] = None
-    pod_name: Optional[str] = None
-    namespace: Optional[str] = None
-    node_name: Optional[str] = None
-
-    def to_dataframe(self) -> pd.DataFrame:
-        df_structure = [(self.pid, self.name, self.container_name, self.pod_name,
-                        self.namespace, self.node_name, self.lifetime_start,
-                        self.lifetime_end, self.events)]
-        return pd.DataFrame(df_structure, columns=["pid", "name", "container", "pod",
-                                                   "namespace", "node", "lifetime_start",
-                                                   "lifetime_end", "events"])
 
 
 # ============================================================================

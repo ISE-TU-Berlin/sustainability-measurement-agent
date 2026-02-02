@@ -1,5 +1,4 @@
 from typing import Dict
-
 from sma.model import MeasurementConfig
 
 prepared_queries: Dict[str, MeasurementConfig] = {}
