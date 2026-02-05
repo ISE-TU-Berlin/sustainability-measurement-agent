@@ -6,9 +6,13 @@ from modules.telelocust.client import TeleLocustClient
 from sma.model import SMAObserver
 from sma.report import Report
 import subprocess
+import os
+from importlib import resources
 
 WORKLOAD_POLLING_FREQUENCY_SECONDS = 0.3
-DEPLOYMENT_YAML_PATH = "modules/telelocust/telelocust-deployment.yaml" # todo: will this work when installed as package?
+DEPLOYMENT_YAML_PATH = resources.files("modules").joinpath(
+    "telelocust/telelocust-deployment.yaml"
+)
 LOCAL_PORT = 5123
 
 logging.basicConfig(level=logging.DEBUG)
@@ -39,6 +43,8 @@ class TelelocustSmaModule(SMAObserver):
             zip_ref.extractall(unzip_path)
         log.info("TeleLocust data extracted successfully.")
 
+    #TODO: idearly we swich to kubernetes API calls instead so that we don't depend on kubeclt
+    #XXX: we should ask the user (in the config) which kube context we want to use ...
     def onSetup(self):
         if self.__deploy_enabled():
             log.info(subprocess.run("pwd", shell=False, capture_output=True, text=True).stdout)
@@ -48,8 +54,11 @@ class TelelocustSmaModule(SMAObserver):
             log.info("TeleLocust infrastructure deployed.")
 
         if self.__port_forward_enabled():
+            #TODO: XXX: don't we aks which namespace to use in the config
             log.info(f"Setting up port forwarding to TeleLocust on localhost:{LOCAL_PORT}...")
-            time.sleep(5)  # Give some time for pod to establish, todo: improve with proper check
+            # time.sleep(5)  # Give some time for pod to establish, todo: improve with proper check #XXX: yes!
+            _wait = subprocess.run(["kubectl","-n","locust","wait", "deploy/telelocust", "--for=condition=Available", "--timeout=600s"])
+            log.debug(f"kubectl wait deploy/telelocust --for=condition=Available --timeout=600s returned {_wait.returncode}")
             log.debug(subprocess.run(["kubectl", "get", "pods", "-n", "locust"], capture_output=True, text=True).stdout)
             # Start port forwarding in the background
             self.port_forward_process = subprocess.Popen(

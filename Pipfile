@@ -17,6 +17,10 @@ build = "*"
 ipykernel = "*"
 pytest = "*"
 pyarrow = "*"
+sustainability-measurement-agen = {path = ".", editable = true}
 
 [requires]
 python_version = "3.9"
+
+[pipenv]
+allow_prereleases = true
