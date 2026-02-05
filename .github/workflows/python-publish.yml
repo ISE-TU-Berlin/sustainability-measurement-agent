@@ -30,7 +30,8 @@ jobs:
         run: |
           # NOTE: put your own distribution build steps here.
           python -m pip install pipenv
-          python -m pipenv install --dev
+          python -m pipenv install
+          python -m pipenv install build
           python -m pipenv run python -m build
           
       - name: Upload distributions
