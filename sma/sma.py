@@ -206,7 +206,7 @@ class SustainabilityMeasurementAgent(object):
             assert module_id is not None
             self.logger.info(f"Waiting for module trigger from module: {module_id}")
             module = self.modules[module_id]
-            assert module is isinstance(Triggerable, module), f"Module {module_id} must implement Triggerable interface"
+            assert isinstance(module, Triggerable), f"Module {module_id} does not implement Triggerable interface"
             trigger_meta = module.trigger(kwargs)
             self.logger.info(f"Module {module_id} trigger function completed with result: {trigger_meta}")
         elif mode == "trigger":

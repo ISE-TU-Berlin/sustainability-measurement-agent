@@ -9,6 +9,8 @@ import datetime
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Protocol, Any
 
+from typing_extensions import runtime_checkable
+
 
 # from sma.report import Report # to avoid circular import
 
@@ -22,6 +24,7 @@ class SMAMetadata(Protocol):
     def to_dict(self, kwargs: Optional[dict]) -> dict:
         ...
 
+@runtime_checkable
 class Triggerable(Protocol):
     """
      Protocol for triggable modules.
