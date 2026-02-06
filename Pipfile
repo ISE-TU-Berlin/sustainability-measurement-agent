@@ -10,6 +10,7 @@ pandas = ">=2.3.0"
 requests = "*"
 click = "*"
 rich = "*"
+numpy = "*"
 
 [dev-packages]
 pyproject-pipenv = "*"
@@ -18,8 +19,6 @@ ipykernel = "*"
 pytest = "*"
 pyarrow = "*"
 sustainability-measurement-agen = {path = ".", editable = true}
-setuptools = "*"
-wheel = "*"
 
 [requires]
 python_version = "3.9"

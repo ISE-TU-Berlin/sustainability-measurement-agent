@@ -1,4 +1,4 @@
-__version__ = "0.1.0"
+__version__ = "0.2.1" #TODO: need to somehow sync with pyproject.toml...
 
 from sma.config import Config
 from sma.sma import SustainabilityMeasurementAgent, SMAObserver

@@ -3,6 +3,7 @@ import os
 import logging
 import click
 
+import sma
 from sma import ReportIO, SMASession
 from sma.log import initialize_logging
 
@@ -101,6 +102,14 @@ def run(config_file: str, probe: str, cli_trigger: bool):
     log.info("Sustainability Measurement Agent finished.")
 
 
+def _fetch(cnf: sma.Config, report_location: str, overwrite: bool):
+    report = ReportIO.load_from_location(report_location, cnf)
+    log.debug("Loaded report")
+    sma = SustainabilityMeasurementAgent(cnf)
+    log.debug("Created SMA Argent")
+
+    sma.observe_once(report.metadata, overwrite)
+
 @cli.command(short_help="""Attempts to fetches measurements again using the provided configuration file.""")
 @click.argument('config_file', type=click.Path(exists=True), )
 @click.argument('report_location', type=click.Path(exists=True))
@@ -114,13 +123,21 @@ def fetch(config_file: str, report_location: str, overwrite: bool):
     """
     cnf = Config.from_file(config_file)
     log.debug("Loaded configuration...")
-    report = ReportIO.load_from_location(report_location, cnf)
-    log.debug("Loaded report")
-    sma = SustainabilityMeasurementAgent(cnf)
-    log.debug("Created SMA Argent")
 
-    #TODO: deal with overwrite flag...
-    sma.observe_once(report.metadata)
+    _fetch(cnf, report_location, overwrite)
+
+@cli.command(short_help="""Attempts to fetches all measurements created with a config again using the provided configuration file.""")
+@click.argument('config_file', type=click.Path(exists=True), )
+@click.option("--overwrite", is_flag=True, help="Overwrite existing measurements")
+def fetchall(config_file: str,  overwrite: bool):
+    cnf = Config.from_file(config_file)
+    log.debug("Loaded configuration...")
+    reports = ReportIO.load_from_config(cnf)
+
+    for report in reports:
+        log.info(f"Fetching report {report.run_data.runHash}...")
+        _fetch(cnf, report.location, overwrite)
+
 
 @cli.command(help="Lists all reports for a given configuration file.")
 @click.argument('config_file', type=click.Path(exists=True))

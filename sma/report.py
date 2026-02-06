@@ -62,9 +62,9 @@ class Report:
     def measurments(self) -> List[str]:
         return list(self.config.measurements.keys())
 
-    def persist(self, extras: Optional[dict] = None) -> None:
+    def persist(self, extras: Optional[dict] = None, overwrite: bool = False) -> None:
         """Persist report data and metadata to disk."""
-        ReportIO.persist(self, extras)  # Delegate to ReportIO implementation
+        ReportIO.persist(self, extras, overwrite)  # Delegate to ReportIO implementation
 
     def _calculate_location(self) -> str:
         """Calculate and validate the location path for this report."""
@@ -125,7 +125,7 @@ class ReportIO:
             raise ValueError(f"Report location contains unsafe '..' component: {location}")
 
     @staticmethod
-    def persist(report: Report, extras: Optional[dict] = None) -> str:
+    def persist(report: Report, extras: Optional[dict] = None, overwrite: bool = False) -> str:
         """
         Persist report to disk with deterministic, human-readable structure.
 
@@ -144,17 +144,22 @@ class ReportIO:
             filename = f"{name}.{report.config.report.format}"
             filepath = os.path.join(data_dir, filename)
 
+            data_files[name] = {
+                "filename": filename,
+                "rows": len(df),
+                "columns": list(df.columns)
+            }
+
+            if os.path.exists(filepath) and not overwrite:
+                report.logger.warning(f"Measurement '{name}' already exists, skipping save.")
+                continue
             # Save based on format
             if report.config.report.format == "csv":
                 df.to_csv(filepath)
             else:
                 raise ValueError(f"Unsupported report format: {report.config.report.format}")
 
-            data_files[name] = {
-                "filename": filename,
-                "rows": len(df),
-                "columns": list(df.columns)
-            }
+
             report.logger.debug(f"Saved measurement '{name}' to {filepath}")
 
         # 2. Save session metadata
@@ -162,8 +167,11 @@ class ReportIO:
             "name": report.metadata.session.name,
             "extras": report.metadata.session.extras or {}
         }
-        with open(os.path.join(location, ReportIO.SESSION_FILE), "w") as f:
-            json.dump(session_data, f, indent=4)
+        if os.path.exists(os.path.join(location, ReportIO.SESSION_FILE)) and not overwrite:
+            report.logger.warning("Session metadata already exists, skipping save.")
+        else:
+            with open(os.path.join(location, ReportIO.SESSION_FILE), "w") as f:
+                json.dump(session_data, f, indent=4)
 
         # 3. Save run metadata
         run_data = {
@@ -174,7 +182,8 @@ class ReportIO:
             "runHash": report.metadata.run.runHash,
             "duration": report.metadata.run.duration().total_seconds(),
             "treatment_duration": report.metadata.run.treatment_duration().total_seconds(),
-            "user_data": report.metadata.run.user_data or {}
+            "user_data": report.metadata.run.user_data or {},
+            "fetch_date": datetime.datetime.now().isoformat()
         }
         if extras:
             run_data["extras"] = extras

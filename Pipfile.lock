@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "748801c9781781878ef87d7599fcb651531657de584bd0c4eb29de77efdc6aef"
+            "sha256": "a3cd4b7914f37bf5503f9051f76e432fc42dac919825ff254393ae57451e1f8d"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -240,6 +240,7 @@
                 "sha256:f15975dfec0cf2239224d80e32c3170b1d168335eaedee69da84fbe9f1f9cd04",
                 "sha256:f26b258c385842546006213344c50655ff1555a9338e2e5e02a0756dc3e803dd"
             ],
+            "index": "pypi",
             "markers": "python_version >= '3.9'",
             "version": "==2.0.2"
         },
@@ -633,7 +634,6 @@
                 "sha256:63c132bbbed01578a06712a2d1f497bb62d9c1c0d329b7903a866228027263b2",
                 "sha256:ed53c9d8990d83c2a27deae68e4ee337473f6330c040a31d4225c9574d16096a"
             ],
-            "index": "pypi",
             "markers": "python_version >= '3.7'",
             "version": "==8.1.8"
         },
@@ -782,7 +782,6 @@
                 "sha256:39e2b33b46e5834ef6c3985ebfe2047ab39135d41de51ce7641a7ca5b372a13d",
                 "sha256:3d00d344944239821458b9efd484d6df9f011da367ecb155dadf9513f05f09ee"
             ],
-            "index": "pypi",
             "markers": "python_version >= '3.6'",
             "version": "==35.0.0"
         },
@@ -943,7 +942,6 @@
                 "sha256:f086f6fe114e19d92014a1966f43a3e62285109afe874f067f5abbdcbb10e59c",
                 "sha256:f8bfc0e12dc78f777f323f55c58649591b2cd0c43534e8355c51d3fede5f4dee"
             ],
-            "index": "pypi",
             "markers": "python_version >= '3.9'",
             "version": "==2.3.3"
         },
@@ -1325,18 +1323,8 @@
                 "sha256:08e67c3e90884651da3239ea668222d19bea7b589149d8014a21c633420dbb69",
                 "sha256:e712f11c1a562a11843306f5ed999475f09ac31ffb64281f73ab29ffdda8b3b8"
             ],
-            "index": "pypi",
             "markers": "python_full_version >= '3.8.0'",
             "version": "==14.3.2"
-        },
-        "setuptools": {
-            "hashes": [
-                "sha256:8b0e9d10c784bf7d262c4e5ec5d4ec94127ce206e8738f29a437945fbc219b70",
-                "sha256:95b30ddfb717250edb492926c92b5221f7ef3fbcc2b07579bcd4a27da21d0173"
-            ],
-            "index": "pypi",
-            "markers": "python_version >= '3.9'",
-            "version": "==80.10.2"
         },
         "six": {
             "hashes": [
@@ -1354,7 +1342,7 @@
             "version": "==0.6.3"
         },
         "sustainability-measurement-agent": {
-            "version": "==0.2.0"
+            "version": "==0.2.1"
         },
         "tomli": {
             "hashes": [
@@ -1482,15 +1470,6 @@
             ],
             "markers": "python_version >= '3.9'",
             "version": "==1.9.0"
-        },
-        "wheel": {
-            "hashes": [
-                "sha256:4b399d56c9d9338230118d705d9737a2a468ccca63d5e813e2a4fc7815d8bc4d",
-                "sha256:e3e79874b07d776c40bd6033f8ddf76a7dad46a7b8aa1b2787a83083519a1803"
-            ],
-            "index": "pypi",
-            "markers": "python_version >= '3.9'",
-            "version": "==0.46.3"
         },
         "zipp": {
             "hashes": [

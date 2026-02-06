@@ -16,6 +16,7 @@ from sma.model import (
 from sma.report import Report
 from sma.service import ServiceException
 
+from sma import __version__
 
 #TODO: we implement an observer pattern for setup, left, duration, right and teardown
 
@@ -39,6 +40,7 @@ class SustainabilityMeasurementAgent(object):
         """
         self.config = config
         self.logger: Logger = getLogger("sma.agent")
+        self.logger.debug(f"Running SMA {__version__} with config: {config}")
         self.observers: list[SMAObserver] = observers
 
         self.session: Optional[SMASession] = None
@@ -205,7 +207,7 @@ class SustainabilityMeasurementAgent(object):
             self.logger.info(f"Waiting for module trigger from module: {module_id}")
             module = self.modules[module_id]
             assert module is isinstance(Triggerable, module), f"Module {module_id} must implement Triggerable interface"
-            trigger_meta = module.trigger()
+            trigger_meta = module.trigger(kwargs)
             self.logger.info(f"Module {module_id} trigger function completed with result: {trigger_meta}")
         elif mode == "trigger":
             assert trigger is not None
@@ -233,7 +235,7 @@ class SustainabilityMeasurementAgent(object):
             treatment_start=treatment_start,
             treatment_end=treatment_end,
             runHash=run_hash,
-            user_data=trigger_meta,
+            user_data=trigger_meta | kwargs,
         )
         
         self.observe_once(ReportMetadata(
@@ -248,6 +250,7 @@ class SustainabilityMeasurementAgent(object):
         
         Args:
             run_data: ReportMetadata containing timing and run identification data
+            overwrite: If True, existing reports will be overwritten, otherwise they will be skipped.
         """
         rep = Report(metadata=run_data, config=self.config, data={})
 
@@ -264,7 +267,8 @@ class SustainabilityMeasurementAgent(object):
             except ServiceException as e:
                 self.logger.error(f"Error Querying measurement {name}: {e}")
 
-        rep.persist()
+        #TODO: don't like this path through to the ReportIO but ...
+        rep.persist(overwrite=overwrite)
         self.notify_observers("onReport", report=rep)
 
     def deploy(self) -> None:
