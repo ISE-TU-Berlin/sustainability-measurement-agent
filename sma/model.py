@@ -7,9 +7,7 @@ Config classes are kept separate in config.py.
 """
 import datetime
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Protocol, Any
-
-from typing_extensions import runtime_checkable
+from typing import Dict, List, Optional, Protocol, Any, runtime_checkable
 
 
 # from sma.report import Report # to avoid circular import
