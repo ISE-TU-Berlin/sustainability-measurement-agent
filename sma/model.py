@@ -22,7 +22,12 @@ class SMAMetadata(Protocol):
     def to_dict(self, kwargs: Optional[dict]) -> dict:
         ...
 
-
+class Triggerable(Protocol):
+    """
+     Protocol for triggable modules.
+    """
+    def trigger(self, **kwargs) -> Optional[Dict[str, Any]]:
+        pass
 
 class SMAObserver(Protocol):
     """Observer protocol for SMA lifecycle events."""

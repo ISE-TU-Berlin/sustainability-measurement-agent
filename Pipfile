@@ -18,6 +18,8 @@ ipykernel = "*"
 pytest = "*"
 pyarrow = "*"
 sustainability-measurement-agen = {path = ".", editable = true}
+setuptools = "*"
+wheel = "*"
 
 [requires]
 python_version = "3.9"

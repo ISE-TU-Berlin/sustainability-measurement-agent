@@ -1,9 +1,10 @@
 import logging
 import time
 import zipfile
+from typing import Optional, Dict, Any
 
 from modules.telelocust.client import TeleLocustClient
-from sma.model import SMAObserver
+from sma.model import SMAObserver, Triggerable
 from sma.report import Report
 import subprocess
 import os
@@ -18,7 +19,7 @@ LOCAL_PORT = 5123
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
-class TelelocustSmaModule(SMAObserver):
+class TelelocustSmaModule(SMAObserver, Triggerable):
     """SMA Module that manages TeleLocust workload execution through REST and data retrieval."""
 
     def __init__(self, config: dict):
@@ -28,8 +29,9 @@ class TelelocustSmaModule(SMAObserver):
         log.debug(f"TeleLocustSmaModule initialized with TeleLocust URL: {TELELOCUST_URL}")
 
 
-    def trigger(self):
-        self.__run_workload()
+    def trigger(self, kwargs) -> Optional[Dict[str, Any]]:
+        self.__run_workload(kwargs)
+        return None
 
 
     def onReport(self, report: Report) -> None:
@@ -105,15 +107,19 @@ class TelelocustSmaModule(SMAObserver):
     def __port_forward_enabled(self) -> bool:
         return self.config.get("port_forward", False)
 
-    def __run_workload(self):
-        self.telelocust_client.start_test_run( 
-            self.config.get("sut_url"),
-            users=self.config.get("users", 10),
-            spawn_rate=self.config.get("spawn_rate", 2), 
-            run_time=self.config.get("run_time", "30s"),
+    def __run_workload(self, kwargs):
+        def get_value(key, default):
+            return kwargs.get(key, self.config.get(key, default))
+
+        self.telelocust_client.start_test_run(
+            get_value("sut_url"),
+            users=get_value("users", 10),
+            spawn_rate=get_value("spawn_rate", 2),
+            run_time=get_value("run_time", "30s"),
             locustfile_path=self.config.get("locustfile") # todo: allow specifying locustfile URL as well
             )
-        log.info(f'Started test run with token: {self.telelocust_client.token}')  
+        log.info(f'Started test run with token: {self.telelocust_client.token}')
+        # todo: maybe we add a timeout here?
         while True:
             status = self.telelocust_client.get_run_status()
             log.info(f'Run status: {status}')

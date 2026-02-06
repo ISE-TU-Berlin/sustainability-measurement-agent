@@ -6,11 +6,11 @@ import random
 from contextlib import contextmanager
 from logging import Logger, getLogger
 from time import sleep
-from typing import Generator, Optional
+from typing import Generator, Optional, Dict, Any
 
 from sma.config import Config
 from sma.model import (
-    SMAObserver, TriggerFunction,
+    SMAObserver, TriggerFunction, Triggerable,
     SMARun, SMASession, ReportMetadata
 )
 from sma.report import Report
@@ -28,7 +28,15 @@ def make_run_hash(start_time: datetime.datetime) -> str:
 
 class SustainabilityMeasurementAgent(object):
 
-    def __init__(self, config: Config, observers: list[SMAObserver] = [], meta: SMASession = None) -> None:
+    def __init__(self, config: Config, observers: list[SMAObserver] = [], meta: SMASession = None, init_modules: Dict[str, Dict[str, Any]] = {}) -> None:
+        """
+            Initialize the SMA agent.
+
+            config: SMA configuration object.
+            observers: List of SMAObserver objects to notify of agent events, can also be registered later via register_sma_observer.
+            meta: Optional SMASession object to use for metadata
+            init_modules: Optional dictionary to define modules and configs to be loaded by the agent at startup.
+        """
         self.config = config
         self.logger: Logger = getLogger("sma.agent")
         self.observers: list[SMAObserver] = observers
@@ -36,7 +44,7 @@ class SustainabilityMeasurementAgent(object):
         self.session: Optional[SMASession] = None
         self.meta_session: Optional[SMASession] = meta
 
-        self.modules = {}
+        self.modules = {} | init_modules
         self.load_modules()
 
         # if meta is not None:
@@ -60,6 +68,8 @@ class SustainabilityMeasurementAgent(object):
 
     def load_modules(self) -> None:
         """Load SMA modules as per configuration and reguister them as observers."""
+        #TODO: should be more typed so we can enable easier external loading.
+        #TODO: Should we enable free loading also of user code?
         for module_id, module_config in self.config.modules.items():
             self.logger.info(f"Loading module: {module_id}")
             module_name = module_config.get("module")
@@ -137,7 +147,7 @@ class SustainabilityMeasurementAgent(object):
 
 
 
-    def run(self, trigger: Optional[TriggerFunction] = None) -> None:
+    def run(self, trigger: Optional[TriggerFunction] = None, **kwargs ) -> None:
         """Execute a measurement run.
         
         Args:
@@ -194,6 +204,7 @@ class SustainabilityMeasurementAgent(object):
             assert module_id is not None
             self.logger.info(f"Waiting for module trigger from module: {module_id}")
             module = self.modules[module_id]
+            assert module is isinstance(Triggerable, module), f"Module {module_id} must implement Triggerable interface"
             trigger_meta = module.trigger()
             self.logger.info(f"Module {module_id} trigger function completed with result: {trigger_meta}")
         elif mode == "trigger":
