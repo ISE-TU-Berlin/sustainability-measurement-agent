@@ -179,6 +179,7 @@ class SustainabilityMeasurementAgent(object):
             md = self.modules[self.config.observation.module_trigger]
             assert hasattr(md, 'trigger') and callable(getattr(md, 'trigger')), \
                 f"Module {md} must have a callable 'trigger' function"
+            # assert isinstance(md, Triggerable), f"Module does not implement Triggerable interface"
         else:
             raise ValueError(f"Unknown observation mode: {mode}")
         
@@ -206,7 +207,6 @@ class SustainabilityMeasurementAgent(object):
             assert module_id is not None
             self.logger.info(f"Waiting for module trigger from module: {module_id}")
             module = self.modules[module_id]
-            assert isinstance(module, Triggerable), f"Module {module_id} does not implement Triggerable interface"
             trigger_meta = module.trigger(kwargs)
             self.logger.info(f"Module {module_id} trigger function completed with result: {trigger_meta}")
         elif mode == "trigger":
