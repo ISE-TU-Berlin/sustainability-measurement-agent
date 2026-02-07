@@ -208,6 +208,8 @@ class SustainabilityMeasurementAgent(object):
             self.logger.info(f"Waiting for module trigger from module: {module_id}")
             module = self.modules[module_id]
             trigger_meta = module.trigger(kwargs)
+            if trigger_meta is None:
+                trigger_meta = {}
             self.logger.info(f"Module {module_id} trigger function completed with result: {trigger_meta}")
         elif mode == "trigger":
             assert trigger is not None
@@ -228,6 +230,9 @@ class SustainabilityMeasurementAgent(object):
             self.notify_observers("onRightEnd")
         end_time = datetime.datetime.now()
 
+        if kwargs is not None:
+            trigger_meta = trigger_meta | kwargs
+
         self.logger.info(f"Total observation duration: {end_time - start_time}")
         run_data = SMARun(
             startTime=start_time,
@@ -235,7 +240,7 @@ class SustainabilityMeasurementAgent(object):
             treatment_start=treatment_start,
             treatment_end=treatment_end,
             runHash=run_hash,
-            user_data=trigger_meta | kwargs,
+            user_data=trigger_meta,
         )
         
         self.observe_once(ReportMetadata(
