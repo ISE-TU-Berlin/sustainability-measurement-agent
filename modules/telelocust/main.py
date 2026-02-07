@@ -108,11 +108,13 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
         return self.config.get("port_forward", False)
 
     def __run_workload(self, kwargs):
-        def get_value(key, default):
+        def get_value(key, default=None):
             return kwargs.get(key, self.config.get(key, default))
-
+        sut_url = get_value("sut_url", None)
+        if sut_url is None:
+            raise ValueError("No SUT URL specified. Please provide a SUT URL in the configuration.")
         self.telelocust_client.start_test_run(
-            get_value("sut_url"),
+            get_value("sut_url",None),
             users=get_value("users", 10),
             spawn_rate=get_value("spawn_rate", 2),
             run_time=get_value("run_time", "30s"),
