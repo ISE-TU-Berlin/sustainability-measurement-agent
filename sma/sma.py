@@ -185,6 +185,7 @@ class SustainabilityMeasurementAgent(object):
         
         start_time = datetime.datetime.now()
         run_hash = make_run_hash(start_time)
+        self.notify_observers("onRunStart")
 
         if window is not None:
             self.notify_observers("onLeftStart")
