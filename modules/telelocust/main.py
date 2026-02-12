@@ -10,11 +10,13 @@ import subprocess
 import os
 from importlib import resources
 
-WORKLOAD_POLLING_FREQUENCY_SECONDS = 0.3
+WORKLOAD_POLLING_FREQUENCY_SECONDS = 1
 DEPLOYMENT_YAML_PATH = resources.files("modules").joinpath(
     "telelocust/telelocust-deployment.yaml"
 )
+
 LOCAL_PORT = 5123
+POLLING_RETRIES = 5
 
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
@@ -108,11 +110,15 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
         return self.config.get("port_forward", False)
 
     def __run_workload(self, kwargs):
+        
         def get_value(key, default=None):
             return kwargs.get(key, self.config.get(key, default))
+        
         sut_url = get_value("sut_url", None)
+
         if sut_url is None:
             raise ValueError("No SUT URL specified. Please provide a SUT URL in the configuration.")
+        
         self.telelocust_client.start_test_run(
             get_value("sut_url",None),
             users=get_value("users", 10),
@@ -120,13 +126,30 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
             run_time=get_value("run_time", "30s"),
             locustfile_path=self.config.get("locustfile") # todo: allow specifying locustfile URL as well
             )
+        
         log.info(f'Started test run with token: {self.telelocust_client.token}')
         # todo: maybe we add a timeout here?
+        
+        polling_retries = POLLING_RETRIES
+
         while True:
-            status = self.telelocust_client.get_run_status()
+            try:
+                status = self.telelocust_client.get_run_status()
+            except TimeoutError:
+                if polling_retries > 0:
+                    log.warning(f"Timeout while polling TeleLocust run status. Retrying... ({POLLING_RETRIES - polling_retries + 1}/{POLLING_RETRIES})")
+                    polling_retries -= 1
+                    continue
+                else:
+                    log.error("Exceeded maximum retries while polling TeleLocust run status. Aborting.")
+                    break
+                    # raise RuntimeError("Failed to retrieve TeleLocust run status after multiple attempts.")
+
             log.info(f'Run status: {status}')
             if status['status'] != 'running':
                 break
             time.sleep(WORKLOAD_POLLING_FREQUENCY_SECONDS)
+        
         log.info(f"Test run finished. {self.telelocust_client.get_run_status()}")
+
 

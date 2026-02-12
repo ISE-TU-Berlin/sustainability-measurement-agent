@@ -2,11 +2,14 @@ import requests
 import base64
 
 DEFAULT_URL = 'http://localhost:5123'
+REQUEST_TIMEOUT = 10
+
 
 class TeleLocustClient:
     def __init__(self, telelocust_url=DEFAULT_URL):
         self.telelocust_url = telelocust_url
         self.token = None
+        self.connection = requests.Session()
 
     def start_test_run(self, sut_host, users=10, spawn_rate=2, run_time='10s', locustfile_path=None):
 
@@ -22,15 +25,18 @@ class TeleLocustClient:
                 parameters['locustfile_base64'] = base64.b64encode(f.read()).decode('utf-8')
 
 
-        response = requests.post(f'{self.telelocust_url}/runs/start', json=parameters)
+        response = self.connection.post(f'{self.telelocust_url}/runs/start', json=parameters)
         response.raise_for_status()
         self.token =  response.json()['token'] 
         return self.token
 
     def get_run_status(self):
-        response = requests.get(f'{self.telelocust_url}/runs/{self.token}')
+        response = self.connection.get(f'{self.telelocust_url}/runs/{self.token}', timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         return response.json() 
+
+    def abort_run(self):
+        pass
 
     def is_finished(self):
         status = self.get_run_status()
@@ -44,7 +50,7 @@ class TeleLocustClient:
         if not self.is_finished():
             raise RuntimeError("Test run is still running. Cannot download data until it is finished.")
 
-        response = requests.get(f'{self.telelocust_url}/runs/{self.token}/download')
+        response = self.connection.get(f'{self.telelocust_url}/runs/{self.token}/download')
         response.raise_for_status()
         with open(output_zip_path, 'wb') as f:
             f.write(response.content)
