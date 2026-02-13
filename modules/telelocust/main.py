@@ -10,13 +10,11 @@ import subprocess
 import os
 from importlib import resources
 
-WORKLOAD_POLLING_FREQUENCY_SECONDS = 1
 DEPLOYMENT_YAML_PATH = resources.files("modules").joinpath(
     "telelocust/telelocust-deployment.yaml"
 )
 
 LOCAL_PORT = 5123
-POLLING_RETRIES = 5
 
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
@@ -129,27 +127,11 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
         
         log.info(f'Started test run with token: {self.telelocust_client.token}')
         # todo: maybe we add a timeout here?
-        
-        polling_retries = POLLING_RETRIES
+        final_status = self.telelocust_client.wait_for_run_completion(polling_interval_seconds=1, max_retries=3)
 
-        while True:
-            try:
-                status = self.telelocust_client.get_run_status()
-            except TimeoutError:
-                if polling_retries > 0:
-                    log.warning(f"Timeout while polling TeleLocust run status. Retrying... ({POLLING_RETRIES - polling_retries + 1}/{POLLING_RETRIES})")
-                    polling_retries -= 1
-                    continue
-                else:
-                    log.error("Exceeded maximum retries while polling TeleLocust run status. Aborting.")
-                    break
-                    # raise RuntimeError("Failed to retrieve TeleLocust run status after multiple attempts.")
-
-            log.info(f'Run status: {status}')
-            if status['status'] != 'running':
-                break
-            time.sleep(WORKLOAD_POLLING_FREQUENCY_SECONDS)
-        
-        log.info(f"Test run finished. {self.telelocust_client.get_run_status()}")
+        if final_status is None:
+            log.warning("Test run completion status is unknown due to polling errors.")
+        else:   
+            log.info(f"Test run finished. {final_status}")
 
 
