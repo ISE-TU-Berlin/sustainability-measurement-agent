@@ -50,7 +50,7 @@ class TeleLocustClient:
         if not self.is_finished():
             raise RuntimeError("Test run is still running. Cannot download data until it is finished.")
 
-        response = self.connection.get(f'{self.telelocust_url}/runs/{self.token}/download')
+        response = self.connection.get(f'{self.telelocust_url}/runs/{self.token}/download', timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         with open(output_zip_path, 'wb') as f:
             f.write(response.content)

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 include-package-data = true
-packages = ["sma", "modules", "cli"]
+packages = ["sma", "modules", "cli", "modules.telelocust", "modules.prometheus"]
 
 [tool.setuptools.package-data]
 "modules.telelocust" = ["*.yaml"]

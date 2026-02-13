@@ -32,6 +32,7 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
 
 
     def trigger(self, kwargs) -> Optional[Dict[str, Any]]:
+        self._is_running = True
         self.__run_workload(kwargs)
         return None
 
