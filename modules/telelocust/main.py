@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 import zipfile
 from typing import Optional, Dict, Any
@@ -30,9 +31,11 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
         self.telelocust_client = TeleLocustClient(TELELOCUST_URL)
         log.debug(f"TeleLocustSmaModule initialized with TeleLocust URL: {TELELOCUST_URL}")
 
+        self.cancel : Optional[threading.Event]= None
 
-    def trigger(self, kwargs) -> Optional[Dict[str, Any]]:
-        self._is_running = True
+
+    def trigger(self, cancel: threading.Event, kwargs) -> Optional[Dict[str, Any]]:
+        self.cancel = cancel
         self.__run_workload(kwargs)
         return None
 
@@ -119,7 +122,10 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
 
         if sut_url is None:
             raise ValueError("No SUT URL specified. Please provide a SUT URL in the configuration.")
-        
+
+        if self.cance is None:
+            raise ValueError("No cancel event provided. Please provide a cancel event in the configuration.")
+
         self.telelocust_client.start_test_run(
             get_value("sut_url",None),
             users=get_value("users", 10),
@@ -133,7 +139,7 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
         
         polling_retries = POLLING_RETRIES
 
-        while True:
+        while not self.cancel.is_set():
             try:
                 status = self.telelocust_client.get_run_status()
             except TimeoutError:

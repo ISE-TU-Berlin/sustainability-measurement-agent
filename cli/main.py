@@ -1,6 +1,9 @@
 import sys
 import os
 import logging
+import threading
+from typing import Optional, Dict, Any
+
 import click
 
 import sma
@@ -20,6 +23,31 @@ log = logging.getLogger("sma.main")
 @click.group()
 def cli():
     pass
+
+
+class EnterTrigger:
+    """
+    Example: "Press Enter" trigger that remains cancellable.
+    - input() itself can't be interrupted portably, so run it in a helper thread and race it vs cancel.
+    """
+    def trigger(self, cancel: threading.Event, **kwargs) -> Optional[Dict[str, Any]]:
+        done = threading.Event()
+
+        def _reader():
+            try:
+                input("Press Enter to end the run... ")
+            finally:
+                done.set()
+
+        threading.Thread(target=_reader, daemon=True).start()
+
+        # wait until either Enter is pressed or cancelled
+        while True:
+            if cancel.is_set():
+                return None
+            if done.wait(timeout=0.1):
+                return None
+
 
 @cli.command()
 @click.argument('config_file', type=click.Path(exists=True))
@@ -84,17 +112,10 @@ def run(config_file: str, probe: str, cli_trigger: bool):
 
 
     log.debug("Starting SMA run...")
-    # sma.setup(SMASession(
-    #     name="TestSession"
-    # ))
-
-    def wait_for_trigger():
-        input("Press Enter to end the run...")
-        return
 
     with sma.start_session() as session:
         if cli_trigger:
-            sma.run(wait_for_trigger)
+            sma.run(EnterTrigger())
         else:
             sma.run()
         # sma.teardown() ## automatically called at the end of with block

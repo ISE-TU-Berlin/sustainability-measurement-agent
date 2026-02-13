@@ -2,16 +2,18 @@
 import datetime
 import hashlib
 import importlib
+import queue
 import random
+import threading
 import time
 from contextlib import contextmanager
 from logging import Logger, getLogger
 from time import sleep
-from typing import Generator, Optional, Dict, Any
+from typing import Generator, Optional, Dict, Any, Tuple
 
 from sma.config import Config
 from sma.model import (
-    SMAObserver, TriggerFunction, Triggerable,
+    SMAObserver, Triggerable,
     SMARun, SMASession, ReportMetadata
 )
 from sma.report import Report
@@ -154,7 +156,32 @@ class SustainabilityMeasurementAgent(object):
         return results
 
 
-    def _run(self, max_duration: int, trigger: TriggerFunction,  **kwargs) -> Optional[Dict[str, Any]]:
+    def _run(self, max_duration: int, trigger: Triggerable, grace_period=0.2,  **kwargs) -> Optional[Tuple[str,Dict[str, Any]]]:
+        cancel = threading.Event()
+        q = queue.Queue()
+
+        def _worker():
+            try:
+                meta = trigger.trigger(cancel, **kwargs)
+                q.put((200,meta))
+            except Exception as e:
+                q.put((500,{"error": str(e)}))
+
+        t = threading.Thread(target=_worker, daemon=True)
+        t.start()
+
+        try:
+            stauts, meta = q.get(timeout=max_duration)
+            if stauts == 200:
+                return "ok",meta
+            else:
+                raise Exception(meta["error"])
+        except queue.Empty:
+            cancel.set()
+            self.notify_observers("onRunTimeout")
+            t.join(timeout=grace_period) #XXX Not sure this works...
+            return "timeout", {}
+
 
 
 
@@ -228,20 +255,7 @@ class SustainabilityMeasurementAgent(object):
 
 
 
-        status = None
-        with ProcessPoolExecutor(max_workers=1) as ex:
-            fut  = ex.submit(trigger, kwargs)
-
-            try:
-                trigger_meta = fut.result(timeout=max_duration)
-                status = "success"
-            except TimeoutError:
-
-                trigger_meta = trigger.cancel()
-                self.notify_observers("onRunTimeout")
-                ex.shutdown(cancel_futures=True, wait=False)
-                status = "timeout"
-                self.logger.warning(f"Treatment timed out, {run_hash} might be missing data.")
+        status,trigger_meta = self._run(max_duration, trigger, **kwargs)
 
         treatment_end = datetime.datetime.now()
 
