@@ -260,6 +260,11 @@ class SustainabilityMeasurementAgent(object):
 
 
         status, trigger_meta = self._run(max_duration, trigger, grace_period=0.2, **kwargs)
+        self.logger.info(f"Trigger execution finished with status: {status}")
+        self.logger.debug(f"Trigger metadata: {trigger_meta}")
+
+        if trigger_meta is None:
+            trigger_meta = {}
 
         treatment_end = datetime.datetime.now()
 
