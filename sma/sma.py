@@ -175,7 +175,8 @@ class SustainabilityMeasurementAgent(object):
             if trigger is None:
                 raise ValueError("Trigger function must be provided for trigger mode")
         elif mode == "module":
-            assert trigger is None, "Trigger function should not be provided for module mode"
+            if trigger is not None:
+                self.logger.warning("Trigger function will be ignored in module mode")
             md = self.modules[self.config.observation.module_trigger]
             assert hasattr(md, 'trigger') and callable(getattr(md, 'trigger')), \
                 f"Module {md} must have a callable 'trigger' function"

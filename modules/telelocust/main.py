@@ -1,8 +1,13 @@
+import urllib
 from  dataclasses import dataclass
 import logging
 import time
 import zipfile
+from enum import Enum, auto
 from typing import Optional, Dict, Any
+
+import requests
+import urllib3
 
 from modules.telelocust.client import TeleLocustClient
 from sma import config
@@ -21,24 +26,30 @@ LOCAL_PORT = 5123
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
+class TelelocustForwarding(Enum):
+    DISABLED = auto(),
+    PROXY = auto(),
+    NODEPORT = auto()
+
 @dataclass
 class TelelocustConfig:
-    stu_url: str
+    sut_url: str
     locustfile : str
 
     # workload options
     users : Optional[int] = 10
-    spawn_rate : Optional[int] = 2
+    ramp : Optional[int] = 2
     run_time : Optional[str] = "30s"
 
     # deployment options
     namespace: str = "locust"
     deploy : Optional[bool] = False
     telelocust_url : Optional[str] = f"http://localhost:{LOCAL_PORT}"
-    port_forward : Optional[bool] = False
+    port_forward : Optional[TelelocustForwarding] = TelelocustForwarding.DISABLED
+
 
     def validate(self) -> bool:
-        assert len(self.stu_url) > 0, "SUT URL must be specified."
+        assert len(self.sut_url) > 0, "SUT URL must be specified."
         assert len(self.namespace) > 0, "Namespace must be specified."
         assert os.path.isfile(self.locustfile), f"Locustfile {self.locustfile} does not exist."
 
@@ -46,6 +57,7 @@ class TelelocustConfig:
 
     @staticmethod
     def from_dict(config: dict) -> "TelelocustConfig":
+        config["port_forward"] = TelelocustForwarding[config.get("port_forward", "DISABLED").upper()]
         return TelelocustConfig(**config)
 
     def __getitem__(self, key):
@@ -74,10 +86,8 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
         self.config: TelelocustConfig = TelelocustConfig.from_dict(config)
         if not self.config.validate():
             raise ValueError("Invalid TeleLocust configuration.")
-        TELELOCUST_URL = self.config.get("telelocust_url", f"http://localhost:{LOCAL_PORT}")
-
-        self.telelocust_client = TeleLocustClient(TELELOCUST_URL)
-        log.debug(f"TeleLocustSmaModule initialized with TeleLocust URL: {TELELOCUST_URL}")
+        log.debug(f"Loaded TeleLocust configuration: {self.config}")
+        self.telelocust_client = None
 
 
     def trigger(self, kwargs: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -102,30 +112,55 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
         if self.__deploy_enabled():
             log.info(subprocess.run("pwd", shell=False, capture_output=True, text=True).stdout)
             log.info("Deploying TeleLocust infrastructure...")
+            subprocess.run(["kubectl", "create", "namespace", self.config.namespace], capture_output=True, text=True) # create namespace if not exists, ignore error if it already exists
             self.__kubectl(f"apply -n {self.config.namespace}", DEPLOYMENT_YAML_PATH)
             time.sleep(1)  # Wait for deployment to stabilize
             log.info("TeleLocust infrastructure deployed.")
 
+        TELELOCUST_URL = None
         if self.__port_forward_enabled():
             #TODO: XXX: don't we aks which namespace to use in the config
-            log.info(f"Setting up port forwarding to TeleLocust on localhost:{LOCAL_PORT}...")
             # time.sleep(5)  # Give some time for pod to establish, todo: improve with proper check #XXX: yes!
             _wait = subprocess.run(["kubectl","-n",self.config.get("namespace"),"wait", "deploy/telelocust", "--for=condition=Available", "--timeout=600s"])
-            log.debug(f"kubectl wait deploy/telelocust --for=condition=Available --timeout=600s returned {_wait.returncode}")
-            log.debug(subprocess.run(["kubectl", "get", "pods", "-n", self.config.get("namespace")], capture_output=True, text=True).stdout)
-            # Start port forwarding in the background
-            self.port_forward_process = subprocess.Popen(
-                ["kubectl", "port-forward", "deployment/telelocust", f"{LOCAL_PORT}:5123", "-n",self.config.get("namespace")],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-            log.debug(f"Port forwarding process started with PID: {self.port_forward_process.pid}, {self.port_forward_process.stdout.readline()}") 
-                    
-            if self.port_forward_process.poll() is not None:
-                raise RuntimeError("Port forwarding process terminated unexpectedly.")
-            log.info("Port forwarding established.")
+            if log.level >= logging.DEBUG:
+                log.debug(f"kubectl wait deploy/telelocust --for=condition=Available --timeout=600s returned {_wait.returncode}")
+                log.debug(subprocess.run(["kubectl", "get", "pods", "-n", self.config.get("namespace")], capture_output=True, text=True).stdout)
+            if self.config.port_forward == TelelocustForwarding.PROXY:
+                self.kubectl_port_forward()
+                TELELOCUST_URL = f"http://localhost:{LOCAL_PORT}"
+            elif self.config.port_forward == TelelocustForwarding.NODEPORT:
+                #TODO: it would be much better to do this with a porpper client
+                assignedNodeport = subprocess.check_output(["kubectl","get","-n",self.config.namespace,"svc","telelocust","-o","jsonpath='{.spec.ports[0].nodePort}'"]).decode("utf-8").strip()[1:-1]
+                nodeIP = subprocess.check_output(["kubectl","config","view","--minify","-o","jsonpath='{.clusters[0].cluster.server}'"]).decode("utf-8").strip()[len("https://")+1:].split(":")[0]
+                TELELOCUST_URL = f"http://{nodeIP}:{assignedNodeport}"
+                if log.level >= logging.DEBUG:
+                    log.debug(f"TeleLocust nodeport assigned: {assignedNodeport}")
+                    log.debug(f"connecting to {TELELOCUST_URL} with {requests.get(TELELOCUST_URL+'/healthz').status_code}")
+        else:
+            TELELOCUST_URL = self.config.get("telelocust_url", f"http://localhost:{LOCAL_PORT}")
 
+        assert TELELOCUST_URL is not None, "TeleLocust URL not found."
+        assert urllib3.util.parse_url(TELELOCUST_URL).scheme == "http", "TeleLocust URL must be HTTP."
+        log.info(f"TeleLocust URL: {TELELOCUST_URL}")
+        self.telelocust_client = TeleLocustClient(TELELOCUST_URL)
+
+        assert self.telelocust_client is not None, "TeleLocust client not initialized."
+
+    def kubectl_port_forward(self):
+        # Start port forwarding in the background
+        self.port_forward_process = subprocess.Popen(
+            ["kubectl", "port-forward", "deployment/telelocust", f"{LOCAL_PORT}:5123", "-n",
+             self.config.get("namespace")],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        log.debug(
+            f"Port forwarding process started with PID: {self.port_forward_process.pid}, {self.port_forward_process.stdout.readline()}")
+
+        if self.port_forward_process.poll() is not None:
+            raise RuntimeError("Port forwarding process terminated unexpectedly.")
+        log.info("Port forwarding established.")
 
     def onTeardown(self):
         if self.__port_forward_enabled() and hasattr(self, 'port_forward_process'):
@@ -134,7 +169,7 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
 
         if self.__deploy_enabled():
             log.info("Tearing down TeleLocust infrastructure...")
-            self.__kubectl("delete", DEPLOYMENT_YAML_PATH)
+            self.__kubectl(f"delete -n {self.config.namespace}", DEPLOYMENT_YAML_PATH)
             log.info("TeleLocust infrastructure torn down.")
 
     def __kubectl(self, command: str, file: str) -> str:
@@ -156,7 +191,7 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
         return self.config.get("deploy", False)
     
     def __port_forward_enabled(self) -> bool:
-        return self.config.get("port_forward", False)
+        return self.config.get("port_forward", TelelocustForwarding.DISABLED) in (TelelocustForwarding.PROXY, TelelocustForwarding.NODEPORT)
 
     def __run_workload(self, kwargs):
         

@@ -7,13 +7,13 @@ sma:
     telelocust:
       module: telelocust
       config:
-        sut_url: "http://teastore-webui.teastore.svc.cluster.local/tools.descartes.teastore.webui"
-        locustfile: "./local/Teastore/examples/locust/locustfile.py"
+        sut_url: "http://echo-service.suo.svc.cluster.local"
+        locustfile: "docs/kind-deployment/locustfile.py"
         users: 10
         ramp: 2
         deploy: true
         namespace: telelocust
-        port_forward: True
+        port_forward: NODEPORT
   observation:
     # observation window mode: 
     # - trigger (python function that blocks),

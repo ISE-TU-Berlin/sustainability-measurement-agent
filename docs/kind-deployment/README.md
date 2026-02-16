@@ -3,8 +3,8 @@
 - [ ] Install kind
 - [ ] Create Cluster
 
-```shell
-kind create cluster --name smac
+```sh
+ kind create cluster --name smac --config sma-kind-demo.yml 
 ```
 
 - [ ] Install Prometheues with Helm
@@ -22,13 +22,8 @@ helm install prometheus prometheus-community/kube-prometheus-stack \
     --set prometheus.prometheusSpec.scrapeTimeout=1s \
     --set prometheus.service.nodePort=30990 \
     --set prometheus.service.type=NodePort \
-    --set grafana.service.nodePort=30930 \
-    --set grafana.service.type=NodePort \
-    # --set alertmanager.service.nodePort=32000 \
-    # --set alertmanager.service.type=NodePort \
-    # --set prometheus-node-exporter.service.nodePort=32001 \
-    # --set prometheus-node-exporter.service.type=NodePort
-    --wait
+    --set grafana.service.nodePort=30989 \
+    --set grafana.service.type=NodePort
 ```
 
 - [ ] Install Kepler with Helm
@@ -55,7 +50,7 @@ helm upgrade --install metrics-server metrics-server/metrics-server --set args="
 - [ ] Run SMA with the kind example config
 
 ```shell
-python main_fancy.py examples/kind.yml
+python cli/main.py run examples/kind.yml
 ```
 
 
@@ -67,6 +62,22 @@ These will run indefintely until you stop them with Ctrl C
 
 ```sh
 kubectl create namespace suo --dry-run=client -o yaml | kubectl apply -f - && kubectl run idle-test --namespace=suo --image=busybox --restart=Never --rm -it -- sleep infinity
+```
+
+#### Echo Service
+Start echo service on `http://echo-service.suo.svc.cluster.local`
+```sh
+kubectl create namespace suo --dry-run=client -o yaml | kubectl apply -f - && \
+kubectl run echo-service \
+  --namespace=suo \
+  --image=nginx \
+  --restart=Never \
+  --labels=app=echo-service && \
+kubectl expose pod echo-service \
+  --namespace=suo \
+  --name=echo-service \
+  --port=80 \
+  --target-port=80
 ```
 
 #### Stress
