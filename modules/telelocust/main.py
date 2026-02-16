@@ -34,9 +34,9 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
         self.cancel : Optional[threading.Event]= None
 
 
-    def trigger(self, cancel: threading.Event, kwargs) -> Optional[Dict[str, Any]]:
+    def trigger(self, cancel: threading.Event, **kwargs) -> Optional[Dict[str, Any]]:
         self.cancel = cancel
-        self.__run_workload(kwargs)
+        self.__run_workload(**kwargs)
         return None
 
 
@@ -113,7 +113,7 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
     def __port_forward_enabled(self) -> bool:
         return self.config.get("port_forward", False)
 
-    def __run_workload(self, kwargs):
+    def __run_workload(self, **kwargs):
         
         def get_value(key, default=None):
             return kwargs.get(key, self.config.get(key, default))
@@ -123,7 +123,7 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
         if sut_url is None:
             raise ValueError("No SUT URL specified. Please provide a SUT URL in the configuration.")
 
-        if self.cance is None:
+        if self.cancel is None:
             raise ValueError("No cancel event provided. Please provide a cancel event in the configuration.")
 
         self.telelocust_client.start_test_run(

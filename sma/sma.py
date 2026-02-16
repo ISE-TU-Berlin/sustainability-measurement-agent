@@ -171,9 +171,9 @@ class SustainabilityMeasurementAgent(object):
         t.start()
 
         try:
-            stauts, meta = q.get(timeout=max_duration)
-            if stauts == 200:
-                return "ok",meta
+            status, meta = q.get(timeout=max_duration)
+            if status == 200:
+                return "ok", meta
             else:
                 raise Exception(meta["error"])
         except queue.Empty:
@@ -181,6 +181,8 @@ class SustainabilityMeasurementAgent(object):
             self.notify_observers("onRunTimeout")
             t.join(timeout=grace_period) #XXX Not sure this works...
             return "timeout", {}
+        
+
 
 
 
@@ -228,12 +230,16 @@ class SustainabilityMeasurementAgent(object):
         if mode == "timer":
             trigger = time_trigger
             kwargs["duration"] = int(max_duration)+10
+
         elif mode == "module":
             module_id = self.config.observation.module_trigger
             assert module_id is not None
             self.logger.info(f"Waiting for module trigger from module: {module_id}")
             module = self.modules[module_id]
-            trigger = module.trigger
+
+            # we are now specifying the OBJECT, not the function
+            # itself, trigger function will be called automatically
+            trigger = module  # .trigger
 
         assert trigger is not None, "Trigger must be defined."
 
@@ -253,9 +259,7 @@ class SustainabilityMeasurementAgent(object):
         treatment_start = datetime.datetime.now()
 
 
-
-
-        status,trigger_meta = self._run(max_duration, trigger, **kwargs)
+        status, trigger_meta = self._run(max_duration, trigger, grace_period=0.2, **kwargs)
 
         treatment_end = datetime.datetime.now()
 
