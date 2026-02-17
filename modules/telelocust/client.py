@@ -1,15 +1,23 @@
+import threading
+
 import requests
 import base64
+import logging
+import time
 
 DEFAULT_URL = 'http://localhost:5123'
 REQUEST_TIMEOUT = 10
+WORKLOAD_POLLING_FREQUENCY_SECONDS = 1
+POLLING_RETRIES = 5
+
+log = logging.getLogger(__name__)
 
 
 class TeleLocustClient:
     def __init__(self, telelocust_url=DEFAULT_URL):
         self.telelocust_url = telelocust_url
         self.token = None
-        self.connection = requests.Session()
+        # self.connection = requests.Session() # no use since telelocust doesn't currently support his
 
     def start_test_run(self, sut_host, users=10, spawn_rate=2, run_time='10s', locustfile_path=None):
 
@@ -25,15 +33,41 @@ class TeleLocustClient:
                 parameters['locustfile_base64'] = base64.b64encode(f.read()).decode('utf-8')
 
 
-        response = self.connection.post(f'{self.telelocust_url}/runs/start', json=parameters)
+        response = requests.post(f'{self.telelocust_url}/runs/start', json=parameters)
         response.raise_for_status()
         self.token =  response.json()['token'] 
         return self.token
 
     def get_run_status(self):
-        response = self.connection.get(f'{self.telelocust_url}/runs/{self.token}', timeout=REQUEST_TIMEOUT)
+        response = requests.get(f'{self.telelocust_url}/runs/{self.token}', timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         return response.json() 
+
+    def wait_for_run_completion(self, cancel: threading.Event, polling_interval_seconds=WORKLOAD_POLLING_FREQUENCY_SECONDS, max_retries=POLLING_RETRIES):
+        retries = 0
+        while cancel.is_set() is False:
+            try:
+                status = self.get_run_status()
+                retries = 0  # reset retries after a successful request
+            except (requests.exceptions.RequestException) as e: # e.g. timeout, connection error
+                log.warning(f"Error while polling TeleLocust run status: {e}")
+                if retries < POLLING_RETRIES:
+                    log.warning(f"Retrying... ({retries + 1}/{POLLING_RETRIES})")
+                    retries += 1
+                    time.sleep(retries * polling_interval_seconds)
+                    continue
+                else:
+                    log.error("Exceeded maximum retries while polling TeleLocust run status. Aborting.")
+                    return
+                    # raise RuntimeError("Failed to retrieve TeleLocust run status after multiple attempts.")
+
+            log.info(f'Run status: {status}')
+            if status['status'] != 'running':
+                return status['status']
+
+            time.sleep(polling_interval_seconds)
+
+        return
 
     def abort_run(self):
         pass
@@ -50,7 +84,7 @@ class TeleLocustClient:
         if not self.is_finished():
             raise RuntimeError("Test run is still running. Cannot download data until it is finished.")
 
-        response = self.connection.get(f'{self.telelocust_url}/runs/{self.token}/download', timeout=REQUEST_TIMEOUT)
+        response = requests.get(f'{self.telelocust_url}/runs/{self.token}/download', timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         with open(output_zip_path, 'wb') as f:
             f.write(response.content)
