@@ -1,9 +1,12 @@
 import logging
+import threading
 import time
 import zipfile
+from dataclasses import dataclass
 from typing import Optional, Dict, Any
 
 from modules.telelocust.client import TeleLocustClient
+from sma import config
 from sma.model import SMAObserver, Triggerable
 from sma.report import Report
 import subprocess
@@ -19,18 +22,70 @@ LOCAL_PORT = 5123
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
+@dataclass
+class TelelocustConfig:
+    sut_url: str
+    locustfile : str
+
+    # workload options
+    users : Optional[int] = 10
+    spawn_rate : Optional[int] = 2
+    run_time : Optional[str] = "30s"
+
+    # deployment options
+    namespace: str = "locust"
+    deploy : Optional[bool] = False
+    telelocust_url : Optional[str] = f"http://localhost:{LOCAL_PORT}"
+    port_forward : Optional[bool] = False
+
+    def validate(self) -> bool:
+        assert len(self.sut_url) > 0, "SUT URL must be specified."
+        assert len(self.namespace) > 0, "Namespace must be specified."
+        assert os.path.isfile(self.locustfile), f"Locustfile {self.locustfile} does not exist."
+
+        return True
+
+    @staticmethod
+    def from_dict(config: dict) -> "TelelocustConfig":
+        return TelelocustConfig(**config)
+
+    def __getitem__(self, key):
+        return getattr(self, key)
+
+    def get(self, key, default=None):
+        return getattr(self, key, default)
+
+    @staticmethod
+    def mergeWithArgs(config: "TelelocustConfig", kwargs: dict) -> "TelelocustConfig":
+        """
+            allow kwargs to override config values
+        """
+        config_dict = config.__dict__.copy()
+        for key in config_dict.keys():
+            if key in kwargs:
+                config_dict[key] = kwargs[key]
+        return TelelocustConfig(**config_dict)
+
+
+
 class TelelocustSmaModule(SMAObserver, Triggerable):
     """SMA Module that manages TeleLocust workload execution through REST and data retrieval."""
 
     def __init__(self, config: dict):
-        TELELOCUST_URL = config.get("telelocust_url", f"http://localhost:{LOCAL_PORT}")
-        self.config = config
+        self.config: TelelocustConfig = TelelocustConfig.from_dict(config)
+        if not self.config.validate():
+            raise ValueError("Invalid TeleLocust configuration.")
+        TELELOCUST_URL = self.config.get("telelocust_url", f"http://localhost:{LOCAL_PORT}")
+
         self.telelocust_client = TeleLocustClient(TELELOCUST_URL)
         log.debug(f"TeleLocustSmaModule initialized with TeleLocust URL: {TELELOCUST_URL}")
 
+        self.cancel : Optional[threading.Event]= None
 
-    def trigger(self, kwargs) -> Optional[Dict[str, Any]]:
-        self.__run_workload(kwargs)
+
+    def trigger(self, cancel: threading.Event, **kwargs) -> Optional[Dict[str, Any]]:
+        self.cancel = cancel
+        self.__run_workload(**kwargs)
         return None
 
 
@@ -51,7 +106,7 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
         if self.__deploy_enabled():
             log.info(subprocess.run("pwd", shell=False, capture_output=True, text=True).stdout)
             log.info("Deploying TeleLocust infrastructure...")
-            self.__kubectl("apply", DEPLOYMENT_YAML_PATH)
+            self.__kubectl(f"apply", DEPLOYMENT_YAML_PATH, namespace=self.config.namespace)
             time.sleep(1)  # Wait for deployment to stabilize
             log.info("TeleLocust infrastructure deployed.")
 
@@ -59,12 +114,12 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
             #TODO: XXX: don't we aks which namespace to use in the config
             log.info(f"Setting up port forwarding to TeleLocust on localhost:{LOCAL_PORT}...")
             # time.sleep(5)  # Give some time for pod to establish, todo: improve with proper check #XXX: yes!
-            _wait = subprocess.run(["kubectl","-n","locust","wait", "deploy/telelocust", "--for=condition=Available", "--timeout=600s"])
+            _wait = subprocess.run(["kubectl","-n",self.config.get("namespace"),"wait", "deploy/telelocust", "--for=condition=Available", "--timeout=600s"])
             log.debug(f"kubectl wait deploy/telelocust --for=condition=Available --timeout=600s returned {_wait.returncode}")
-            log.debug(subprocess.run(["kubectl", "get", "pods", "-n", "locust"], capture_output=True, text=True).stdout)
+            log.debug(subprocess.run(["kubectl", "get", "pods", "-n", self.config.get("namespace")], capture_output=True, text=True).stdout)
             # Start port forwarding in the background
             self.port_forward_process = subprocess.Popen(
-                ["kubectl", "port-forward", "deployment/telelocust", f"{LOCAL_PORT}:5123", "-n", "locust"],
+                ["kubectl", "port-forward", "deployment/telelocust", f"{LOCAL_PORT}:5123", "-n",self.config.get("namespace")],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -83,11 +138,13 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
 
         if self.__deploy_enabled():
             log.info("Tearing down TeleLocust infrastructure...")
-            self.__kubectl("delete", DEPLOYMENT_YAML_PATH)
+            self.__kubectl("delete", DEPLOYMENT_YAML_PATH, namespace=self.config.namespace)
             log.info("TeleLocust infrastructure torn down.")
 
-    def __kubectl(self, command: str, file: str) -> str:
+    def __kubectl(self, command: str, file: str, namespace: str = None) -> str:
         cmdline = ["kubectl"] + command.split() + ["-f", file]
+        if namespace:
+            cmdline += ["-n", namespace]    
         log.debug(f"Executing kubectl command: {cmdline}")
         result = subprocess.run(
             cmdline,
@@ -107,31 +164,31 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
     def __port_forward_enabled(self) -> bool:
         return self.config.get("port_forward", False)
 
-    def __run_workload(self, kwargs):
+    def __run_workload(self, **kwargs):
         
-        def get_value(key, default=None):
-            return kwargs.get(key, self.config.get(key, default))
-        
-        sut_url = get_value("sut_url", None)
+        run_config = TelelocustConfig.mergeWithArgs(self.config, kwargs)
 
-        if sut_url is None:
+        if run_config.sut_url is None:
             raise ValueError("No SUT URL specified. Please provide a SUT URL in the configuration.")
-        
+
+        if self.cancel is None:
+            raise ValueError("No cancel event provided. Please provide a cancel event in the configuration.")
+
         self.telelocust_client.start_test_run(
-            get_value("sut_url",None),
-            users=get_value("users", 10),
-            spawn_rate=get_value("spawn_rate", 2),
-            run_time=get_value("run_time", "30s"),
-            locustfile_path=self.config.get("locustfile") # todo: allow specifying locustfile URL as well
+            run_config.get("sut_url",None),
+            users= run_config.get("users", 10),
+            spawn_rate= run_config.get("spawn_rate", 2),
+            run_time= run_config.get("run_time", "30s"),
+            locustfile_path=run_config.get("locustfile") # todo: allow specifying locustfile URL as well
             )
         
         log.info(f'Started test run with token: {self.telelocust_client.token}')
         # todo: maybe we add a timeout here?
-        final_status = self.telelocust_client.wait_for_run_completion(polling_interval_seconds=1, max_retries=3)
+        final_status = self.telelocust_client.wait_for_run_completion(self.cancel, polling_interval_seconds=1, max_retries=3)
 
         if final_status is None:
-            log.warning("Test run completion status is unknown due to polling errors.")
-        else:   
+            log.warning("Test run completion status is unknown due to polling or timeout errors.")
+        else:
             log.info(f"Test run finished. {final_status}")
 
 

@@ -6,6 +6,7 @@ safely imported throughout the codebase without circular import issues.
 Config classes are kept separate in config.py.
 """
 import datetime
+import threading
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Protocol, Any, runtime_checkable
 
@@ -16,7 +17,7 @@ from typing import Dict, List, Optional, Protocol, Any, runtime_checkable
 # ============================================================================
 # Protocols
 # ============================================================================
-
+from  threading import Event
 class SMAMetadata(Protocol):
     """Protocol for metadata objects that can be serialized to dict."""
     def to_dict(self, kwargs: Optional[dict]) -> dict:
@@ -25,9 +26,17 @@ class SMAMetadata(Protocol):
 @runtime_checkable
 class Triggerable(Protocol):
     """
-     Protocol for triggable modules.
+      Triggerable Treatment Protocol for SMA modules that to run treatments to observe
     """
-    def trigger(self, **kwargs) -> Optional[Dict[str, Any]]:
+    def trigger(self, cancel: threading.Event, **kwargs) -> Optional[Dict[str, Any]]:
+        """
+            A blocking function that initiates a treatment run.
+
+            must observe the cancle event and block
+
+            returns metadata about the run, defined by the user/module.\
+
+        """
         pass
 
 class SMAObserver(Protocol):
@@ -73,12 +82,9 @@ class SMAObserver(Protocol):
     def onTeardown(self) -> None:
         pass
 
-
-
-class TriggerFunction(Protocol):
-    """Protocol for trigger functions that initiate measurements."""
-    def __call__(self) -> Optional[dict]:
+    def onRunTimeout(self) -> None:
         pass
+
 
 
 # ============================================================================
@@ -106,7 +112,6 @@ class SMASession:
             meta.update(kwargs)
         return meta
 
-
 @dataclass
 class SMARun:
     """
@@ -118,6 +123,7 @@ class SMARun:
     treatment_end: datetime.datetime
     runHash: str
     user_data: Optional[dict] = None
+    status: Optional[str] = None
 
     def duration(self) -> datetime.timedelta:
         return self.endTime - self.startTime
@@ -134,6 +140,7 @@ class SMARun:
             "runHash": self.runHash,
             "duration": self.duration().total_seconds() if self.duration() is not None else "",  # type: ignore
             "treatment_duration": self.treatment_duration().total_seconds() if self.treatment_duration() is not None else "",  # type: ignore
+            "status": self.status if self.status is not None else "",
             "user_data": self.user_data if self.user_data is not None else {},
         }
 
@@ -152,6 +159,7 @@ class SMARun:
             "duration",
             "treatment_duration",
             "user_data"
+            "status"
         ]
 
 
@@ -186,13 +194,13 @@ class ObservationWindow:
     """Time window configuration for observations."""
     left: int
     right: int
-    duration: int
 
 @dataclass
 class ObservationConfig:
     """Configuration for observation behavior."""
     mode: str
     window: Optional[ObservationWindow]
+    max_duration : Optional[int] = None
     module_trigger: Optional[str] = None
     targets: Optional[List[ObservationTarget]] = None
 

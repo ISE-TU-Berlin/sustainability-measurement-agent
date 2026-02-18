@@ -120,24 +120,25 @@ observation:
   window:
     left: 10s   
     right: 10s 
-    duration: 10s
+  max_duration: 10s
   targets:
     - name: sut
       namespace: kubeai
 ```
 
-| Field | Options/Type | Description                                                                                                                                                                                                       |
-|-------|--------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `mode` | `trigger`, `timer`, `module` | **trigger**: Measurement starts/stops based on a Python function that blocks<br>**timer**: Measurement based on time window settings\
-<br>**module**: run a trigger function from a module, e.g. a workload runner |
-| `trigger_module` | When in *module* mode, specify the module name to call the trigger from |
-| `window.left` | Duration (e.g., `10s`) | Time to capture before the measurement trigger                                                                                                                                                                    |
-| `window.right` | Duration (e.g., `10s`) | Time to capture after the measurement trigger                                                                                                                                                                     |
-| `window.duration` | Duration (e.g., `10s`) | Total measurement duration                                                                                                                                                                                        |
-| `targets[].name` | String | Name identifier for the target workload                                                                                                                                                                           |
-| `targets[].namespace` | String | Kubernetes namespace of the target workload                                                                                                                                                                       |
+| Field                                                                        | Options/Type | Description                                                                                                                           |
+|------------------------------------------------------------------------------|--------------|---------------------------------------------------------------------------------------------------------------------------------------|
+| `mode`                                                                       | `trigger`, `timer`, `module` | **trigger**: Measurement starts/stops based on a Python function that blocks<br>**timer**: Measurement based on time window settings\ 
+ <br>**module**: run a trigger function from a module, e.g. a workload runner |
+| `trigger_module`                                                             | When in *module* mode, specify the module name to call the trigger from |
+| `window.left`                                                                | Duration (e.g., `10s`) | Time to capture before the measurement trigger                                                                                        |
+| `window.right`                                                               | Duration (e.g., `10s`) | Time to capture after the measurement trigger                                                                                         |
+| `max_duration`                                                               | Duration (e.g., `10s`) | Optional total measurement duration, before a run is interuppted.                                                                     |
+| `targets[].name`                                                             | String | Name identifier for the target workload                                                                                               |
+| `targets[].namespace`                                                        | String | Kubernetes namespace of the target workload                                                                                           |
 
-Depoending on the mode, SMA will not use of all of the windowing parameters, e.g., duration is only considered in `timer` mode. Both `left` and `right` windows are optional and mean, SMA will wait before handing off the measurement to the next API call.
+Both `left` and `right` windows are optional and mean, SMA will wait before handing off the measurement to the next API call.
+The `max_duration` is optional and specifies the maximum time to run the measurement, before it is interrupted. For the `time` trigger mode, the treatment will be stopped after the `max_duration` has elapsed (so expect to see a warning in the logs if the treatment is interrupted).
 
 ##### 6. Measurements
 ```yaml
