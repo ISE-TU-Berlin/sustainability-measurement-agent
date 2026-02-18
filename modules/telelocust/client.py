@@ -17,6 +17,7 @@ class TeleLocustClient:
     def __init__(self, telelocust_url=DEFAULT_URL):
         self.telelocust_url = telelocust_url
         self.token = None
+        self.cancel = None
         # self.connection = requests.Session() # no use since telelocust doesn't currently support his
 
     def start_test_run(self, sut_host, users=10, spawn_rate=2, run_time='10s', locustfile_path=None):
@@ -45,7 +46,8 @@ class TeleLocustClient:
 
     def wait_for_run_completion(self, cancel: threading.Event, polling_interval_seconds=WORKLOAD_POLLING_FREQUENCY_SECONDS, max_retries=POLLING_RETRIES):
         retries = 0
-        while cancel.is_set() is False:
+        self.cancel = cancel
+        while not cancel.is_set():
             try:
                 status = self.get_run_status()
                 retries = 0  # reset retries after a successful request
@@ -74,7 +76,7 @@ class TeleLocustClient:
 
     def is_finished(self):
         status = self.get_run_status()
-        return status['status'] != 'running'
+        return status['status'] != 'running' or self.cancel.is_set()
 
     def download_run_data(self, output_zip_path):
 

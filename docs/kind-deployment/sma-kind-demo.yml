@@ -1,6 +1,12 @@
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: sma-kind-cluster
+kubeadmConfigPatches:
+- |
+  kind: ClusterConfiguration
+  apiServer:
+    extraArgs:
+      service-node-port-range: "30980-30990"
 nodes:
 - role: control-plane
   extraPortMappings:
@@ -8,8 +14,27 @@ nodes:
   - containerPort: 30990
     hostPort: 9090
   # grafana
-  - containerPort: 30930
+  - containerPort: 30989
     hostPort: 3000
+    # NodePort
+  - containerPort: 30980
+    hostPort: 30980
+  - containerPort: 30981
+    hostPort: 30981
+  - containerPort: 30982
+    hostPort: 30982
+  - containerPort: 30983
+    hostPort: 30983
+  - containerPort: 30984
+    hostPort: 30984
+  - containerPort: 30985
+    hostPort: 30985
+  - containerPort: 30986
+    hostPort: 30986
+  - containerPort: 30987
+    hostPort: 30987
+  - containerPort: 30988
+    hostPort: 30988
 - role: worker
   labels:
     sma_role: suo
