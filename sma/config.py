@@ -144,9 +144,13 @@ class Config:
         else:
             window = ObservationWindow(
                 left=_parse_duration(window_raw.get("left")),
-                right=_parse_duration(window_raw.get("right")),
-                duration=_parse_duration(window_raw.get("duration")),
+                right=_parse_duration(window_raw.get("right"))
             )
+
+        max_duration = None
+        if "max_duration" in obs_raw:
+            max_duration = _parse_duration(obs_raw["max_duration"])
+
 
         targets_list = obs_raw.get("targets", []) or []
         named_targets: Dict[str, ObservationTarget] = {}
@@ -166,7 +170,7 @@ class Config:
             named_targets[name] = ot
 
 
-        observation = ObservationConfig(mode=mode, module_trigger=module_trigger, window=window, targets=list(named_targets.values()))
+        observation = ObservationConfig(mode=mode, module_trigger=module_trigger, window=window, targets=list(named_targets.values()), max_duration=max_duration)
 
         # Measurements
         measurements_raw = sma.get("measurements", []) or []

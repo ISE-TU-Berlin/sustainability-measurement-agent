@@ -2,15 +2,18 @@
 import datetime
 import hashlib
 import importlib
+import queue
 import random
+import threading
+import time
 from contextlib import contextmanager
 from logging import Logger, getLogger
 from time import sleep
-from typing import Generator, Optional, Dict, Any
+from typing import Generator, Optional, Dict, Any, Tuple
 
 from sma.config import Config
 from sma.model import (
-    SMAObserver, TriggerFunction, Triggerable,
+    SMAObserver, Triggerable,
     SMARun, SMASession, ReportMetadata
 )
 from sma.report import Report
@@ -18,14 +21,20 @@ from sma.service import ServiceException
 
 from sma import __version__
 
-#TODO: we implement an observer pattern for setup, left, duration, right and teardown
-
-
-
 def make_run_hash(start_time: datetime.datetime) -> str:
     hash_input = f"{start_time.isoformat()}_{random.random()}"
     return hashlib.sha256(hash_input.encode()).hexdigest()[:8]
 
+from concurrent.futures import ProcessPoolExecutor, TimeoutError
+
+
+def time_trigger(kwargs: Optional[dict] = None) -> dict:
+    import time
+    if kwargs and "duration" in kwargs:
+        time.sleep(kwargs["duration"])
+    else:
+        raise ValueError("duration must be provided as keyword argument")
+    return {}
 
 class SustainabilityMeasurementAgent(object):
 
@@ -147,9 +156,39 @@ class SustainabilityMeasurementAgent(object):
         return results
 
 
+    def _run(self, max_duration: int, trigger: Triggerable, grace_period=0.2,  **kwargs) -> Optional[Tuple[str,Dict[str, Any]]]:
+        cancel = threading.Event()
+        q = queue.Queue()
+
+        def _worker():
+            try:
+                meta = trigger.trigger(cancel, **kwargs)
+                q.put((200,meta))
+            except Exception as e:
+                q.put((500,{"error": str(e)}))
+
+        t = threading.Thread(target=_worker, daemon=True)
+        t.start()
+
+        try:
+            status, meta = q.get(timeout=max_duration)
+            if status == 200:
+                return "ok", meta
+            else:
+                raise Exception(meta["error"])
+        except queue.Empty:
+            cancel.set()
+            self.notify_observers("onRunTimeout")
+            t.join(timeout=grace_period) #XXX Not sure this works...
+            return "timeout", {}
+        
 
 
-    def run(self, trigger: Optional[TriggerFunction] = None, **kwargs ) -> None:
+
+
+
+
+    def run(self, trigger: Optional[Triggerable] = None, **kwargs ) -> None:
         """Execute a measurement run.
         
         Args:
@@ -161,8 +200,13 @@ class SustainabilityMeasurementAgent(object):
         mode = self.config.observation.mode
         self.logger.info(f"Observation mode: {mode}")
 
+        max_duration = self.config.observation.max_duration
+        if max_duration:
+            self.logger.info(f"Max duration: {max_duration}s")
+
         window = self.config.observation.window
-        self.logger.info(f"Observation window: left={window.left}s, right={window.right}s, duration={window.duration}s") # type: ignore
+        if window is not None:
+            self.logger.info(f"Observation window: left={window.left}s, right={window.right}s") # type: ignore
 
         if self.session is None:
             raise ValueError("Session must be set before running in trigger mode.")
@@ -170,8 +214,8 @@ class SustainabilityMeasurementAgent(object):
         # checks:
         if mode == "timer":
             assert window is not None, "Observation window must be defined for timer mode"
+            assert max_duration is not None, "Max duration must be defined for timer mode"
         elif mode == "trigger":
-           
             if trigger is None:
                 raise ValueError("Trigger function must be provided for trigger mode")
         elif mode == "module":
@@ -183,10 +227,27 @@ class SustainabilityMeasurementAgent(object):
             # assert isinstance(md, Triggerable), f"Module does not implement Triggerable interface"
         else:
             raise ValueError(f"Unknown observation mode: {mode}")
-        
+
+        if mode == "timer":
+            trigger = time_trigger
+            kwargs["duration"] = int(max_duration)+10
+
+        elif mode == "module":
+            module_id = self.config.observation.module_trigger
+            assert module_id is not None
+            self.logger.info(f"Waiting for module trigger from module: {module_id}")
+            module = self.modules[module_id]
+
+            # we are now specifying the OBJECT, not the function
+            # itself, trigger function will be called automatically
+            trigger = module  # .trigger
+
+        assert trigger is not None, "Trigger must be defined."
+
         start_time = datetime.datetime.now()
         run_hash = make_run_hash(start_time)
         self.notify_observers("onRunStart")
+
 
         if window is not None:
             self.notify_observers("onLeftStart")
@@ -198,27 +259,13 @@ class SustainabilityMeasurementAgent(object):
         self.notify_observers("onTreatmentStart")
         treatment_start = datetime.datetime.now()
 
-        trigger_meta = {}
-        
-        if mode == "timer":
-            assert window is not None
-            self.logger.info(f"Waiting for treatment duration: {window.duration}s")
-            sleep(window.duration)
-        elif mode == "module":
-            module_id = self.config.observation.module_trigger
-            assert module_id is not None
-            self.logger.info(f"Waiting for module trigger from module: {module_id}")
-            module = self.modules[module_id]
-            trigger_meta = module.trigger(kwargs)
-            if trigger_meta is None:
-                trigger_meta = {}
-            self.logger.info(f"Module {module_id} trigger function completed with result: {trigger_meta}")
-        elif mode == "trigger":
-            assert trigger is not None
-            self.logger.info(f"Waiting for trigger")
-            # wait for the blocking trigger function 
-            trigger_meta = trigger()
-            self.logger.info(f"Trigger function fired with result: {trigger_meta}")
+
+        status, trigger_meta = self._run(max_duration, trigger, grace_period=0.2, **kwargs)
+        self.logger.info(f"Trigger execution finished with status: {status}")
+        self.logger.debug(f"Trigger metadata: {trigger_meta}")
+
+        if trigger_meta is None:
+            trigger_meta = {}
 
         treatment_end = datetime.datetime.now()
 
@@ -242,6 +289,7 @@ class SustainabilityMeasurementAgent(object):
             treatment_start=treatment_start,
             treatment_end=treatment_end,
             runHash=run_hash,
+            status=status,
             user_data=trigger_meta,
         )
         
