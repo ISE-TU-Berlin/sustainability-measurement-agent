@@ -1,9 +1,9 @@
-import urllib
-from  dataclasses import dataclass
 import logging
+import threading
 import time
 import zipfile
 from enum import Enum, auto
+from dataclasses import dataclass
 from typing import Optional, Dict, Any
 
 import requests
@@ -89,9 +89,12 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
         log.debug(f"Loaded TeleLocust configuration: {self.config}")
         self.telelocust_client = None
 
+        self.cancel : Optional[threading.Event]= None
 
-    def trigger(self, kwargs: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        self.__run_workload(kwargs)
+
+    def trigger(self, cancel: threading.Event, **kwargs) -> Optional[Dict[str, Any]]:
+        self.cancel = cancel
+        self.__run_workload(**kwargs)
         return None
 
 
@@ -113,7 +116,7 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
             log.info(subprocess.run("pwd", shell=False, capture_output=True, text=True).stdout)
             log.info("Deploying TeleLocust infrastructure...")
             subprocess.run(["kubectl", "create", "namespace", self.config.namespace], capture_output=True, text=True) # create namespace if not exists, ignore error if it already exists
-            self.__kubectl(f"apply -n {self.config.namespace}", DEPLOYMENT_YAML_PATH)
+            self.__kubectl(f"apply", DEPLOYMENT_YAML_PATH, namespace=self.config.namespace)
             time.sleep(1)  # Wait for deployment to stabilize
             log.info("TeleLocust infrastructure deployed.")
 
@@ -169,11 +172,13 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
 
         if self.__deploy_enabled():
             log.info("Tearing down TeleLocust infrastructure...")
-            self.__kubectl(f"delete -n {self.config.namespace}", DEPLOYMENT_YAML_PATH)
+            self.__kubectl(f"delete -n {self.config.namespace}", DEPLOYMENT_YAML_PATH, namespace=self.config.namespace)
             log.info("TeleLocust infrastructure torn down.")
 
-    def __kubectl(self, command: str, file: str) -> str:
+    def __kubectl(self, command: str, file: str, namespace: str = None) -> str:
         cmdline = ["kubectl"] + command.split() + ["-f", file]
+        if namespace:
+            cmdline += ["-n", namespace]
         log.debug(f"Executing kubectl command: {cmdline}")
         result = subprocess.run(
             cmdline,
@@ -193,13 +198,16 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
     def __port_forward_enabled(self) -> bool:
         return self.config.get("port_forward", TelelocustForwarding.DISABLED) in (TelelocustForwarding.PROXY, TelelocustForwarding.NODEPORT)
 
-    def __run_workload(self, kwargs):
+    def __run_workload(self, **kwargs):
         
         run_config = TelelocustConfig.mergeWithArgs(self.config, kwargs)
 
         if run_config.sut_url is None:
             raise ValueError("No SUT URL specified. Please provide a SUT URL in the configuration.")
-        
+
+        if self.cancel is None:
+            raise ValueError("No cancel event provided. Please provide a cancel event in the configuration.")
+
         self.telelocust_client.start_test_run(
             run_config.get("sut_url",None),
             users= run_config.get("users", 10),
@@ -210,11 +218,11 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
         
         log.info(f'Started test run with token: {self.telelocust_client.token}')
         # todo: maybe we add a timeout here?
-        final_status = self.telelocust_client.wait_for_run_completion(polling_interval_seconds=1, max_retries=3)
+        final_status = self.telelocust_client.wait_for_run_completion(self.cancel, polling_interval_seconds=1, max_retries=3)
 
         if final_status is None:
-            log.warning("Test run completion status is unknown due to polling errors.")
-        else:   
+            log.warning("Test run completion status is unknown due to polling or timeout errors.")
+        else:
             log.info(f"Test run finished. {final_status}")
 
 
