@@ -39,7 +39,7 @@ class TelelocustConfig:
     port_forward : Optional[bool] = False
 
     def validate(self) -> bool:
-        assert len(self.stu_url) > 0, "SUT URL must be specified."
+        assert len(self.sut_url) > 0, "SUT URL must be specified."
         assert len(self.namespace) > 0, "Namespace must be specified."
         assert os.path.isfile(self.locustfile), f"Locustfile {self.locustfile} does not exist."
 
