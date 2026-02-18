@@ -95,6 +95,8 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
 
         self.cancel : Optional[threading.Event]= None
 
+        self.deployed = False
+
 
     def trigger(self, cancel: threading.Event, **kwargs) -> Optional[Dict[str, Any]]:
         self.cancel = cancel
@@ -123,12 +125,13 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
             self.__kubectl(f"apply", DEPLOYMENT_YAML_PATH, namespace=self.config.namespace)
             time.sleep(1)  # Wait for deployment to stabilize
             log.info("TeleLocust infrastructure deployed.")
+            _wait = subprocess.run(["kubectl", "-n", self.config.get("namespace"), "wait", "deploy/telelocust",
+                                    "--for=condition=Available", "--timeout=600s"])
+            self.deployed = True
 
         TELELOCUST_URL = None
         if self.__port_forward_enabled():
             #TODO: XXX: don't we aks which namespace to use in the config
-            # time.sleep(5)  # Give some time for pod to establish, todo: improve with proper check #XXX: yes!
-            _wait = subprocess.run(["kubectl","-n",self.config.get("namespace"),"wait", "deploy/telelocust", "--for=condition=Available", "--timeout=600s"])
             if log.level >= logging.DEBUG:
                 log.debug(f"kubectl wait deploy/telelocust --for=condition=Available --timeout=600s returned {_wait.returncode}")
                 log.debug(subprocess.run(["kubectl", "get", "pods", "-n", self.config.get("namespace")], capture_output=True, text=True).stdout)
@@ -177,7 +180,7 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
             log.info("Stopping port forwarding...")
             self.port_forward_process.terminate()
 
-        if self.__deploy_enabled():
+        if self.__deploy_enabled() and self.deployed:
             log.info("Tearing down TeleLocust infrastructure...")
             self.__kubectl(f"delete -n {self.config.namespace}", DEPLOYMENT_YAML_PATH, namespace=self.config.namespace)
             log.info("TeleLocust infrastructure torn down.")

@@ -9,7 +9,7 @@ sma:
       config:
         # telelocust_url: 
         sut_url: "http://teastore-webui.teastore.svc.cluster.local/tools.descartes.teastore.webui"
-        locustfile: "./local/Teastore/examples/locust/locustfile.py"
+        locustfile: ./docs/kind-deployment/locustfile.py
         users: 10
         spawn_rate: 2
         run_time: 3s
@@ -27,7 +27,7 @@ sma:
     window:
       left: 1s
       right: 1s
-      duration: 30s # only used in timer mode
+    max_duration: 10s
     targets:
       # target name to be referenced later
       - name: suo
