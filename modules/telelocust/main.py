@@ -38,7 +38,7 @@ class TelelocustConfig:
 
     # workload options
     users : Optional[int] = 10
-    ramp : Optional[int] = 2
+    spawn_rate : Optional[int] = 2
     run_time : Optional[str] = "30s"
 
     # deployment options
@@ -58,6 +58,10 @@ class TelelocustConfig:
     @staticmethod
     def from_dict(config: dict) -> "TelelocustConfig":
         config["port_forward"] = TelelocustForwarding[config.get("port_forward", "DISABLED").upper()]
+        # Fix backward compatibility
+        if "ramp" in config and "spawn_rate" not in config:
+            config["spawn_rate"] = config["ramp"]
+            log.warning("The 'ramp' option is deprecated. Please use 'spawn_rate' instead.")
         return TelelocustConfig(**config)
 
     def __getitem__(self, key):
@@ -133,8 +137,11 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
                 TELELOCUST_URL = f"http://localhost:{LOCAL_PORT}"
             elif self.config.port_forward == TelelocustForwarding.NODEPORT:
                 #TODO: it would be much better to do this with a porpper client
-                assignedNodeport = subprocess.check_output(["kubectl","get","-n",self.config.namespace,"svc","telelocust","-o","jsonpath='{.spec.ports[0].nodePort}'"]).decode("utf-8").strip()[1:-1]
-                nodeIP = subprocess.check_output(["kubectl","config","view","--minify","-o","jsonpath='{.clusters[0].cluster.server}'"]).decode("utf-8").strip()[len("https://")+1:].split(":")[0]
+                assignedNodeport = subprocess.check_output(["kubectl","get","-n",self.config.namespace,"svc","telelocust","-o","jsonpath={.spec.ports[0].nodePort}"]).decode("utf-8").strip()
+                # The assumption is that the IP of the control plane is the same as the IP we can use to access the cluster
+                nodeIPString = subprocess.check_output(["kubectl","config","view","--minify","-o","jsonpath={.clusters[0].cluster.server}"]).decode("utf-8").strip()
+                nodeIPUrl = urllib3.util.parse_url(nodeIPString)
+                nodeIP = nodeIPUrl.host
                 TELELOCUST_URL = f"http://{nodeIP}:{assignedNodeport}"
                 if log.level >= logging.DEBUG:
                     log.debug(f"TeleLocust nodeport assigned: {assignedNodeport}")

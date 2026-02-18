@@ -5,11 +5,10 @@ import importlib
 import queue
 import random
 import threading
-import time
 from contextlib import contextmanager
 from logging import Logger, getLogger
 from time import sleep
-from typing import Generator, Optional, Dict, Any, Tuple
+from typing import Generator, Optional, Dict, Any, Tuple, List
 
 from sma.config import Config
 from sma.model import (
@@ -25,20 +24,25 @@ def make_run_hash(start_time: datetime.datetime) -> str:
     hash_input = f"{start_time.isoformat()}_{random.random()}"
     return hashlib.sha256(hash_input.encode()).hexdigest()[:8]
 
-from concurrent.futures import ProcessPoolExecutor, TimeoutError
 
-
-def time_trigger(kwargs: Optional[dict] = None) -> dict:
-    import time
-    if kwargs and "duration" in kwargs:
-        time.sleep(kwargs["duration"])
-    else:
-        raise ValueError("duration must be provided as keyword argument")
-    return {}
+class TimeTrigger(Triggerable):
+    def trigger(self, cancel: threading.Event, **kwargs) -> dict:
+        import time
+        if kwargs and "duration" in kwargs:
+            seconds = kwargs["duration"]
+            while not cancel.is_set():
+                time.sleep(1)
+                seconds -= 1
+                if seconds <= 0:
+                    break
+        else:
+            raise ValueError("duration must be provided as keyword argument")
+        return {}
 
 class SustainabilityMeasurementAgent(object):
 
-    def __init__(self, config: Config, observers: list[SMAObserver] = [], meta: SMASession = None, init_modules: Dict[str, Dict[str, Any]] = {}) -> None:
+    def __init__(self, config: Config,
+                 observers: Optional[List[SMAObserver]] = None, meta: SMASession = None, init_modules: Dict[str, Dict[str, Any]] = {}) -> None:
         """
             Initialize the SMA agent.
 
@@ -50,7 +54,7 @@ class SustainabilityMeasurementAgent(object):
         self.config = config
         self.logger: Logger = getLogger("sma.agent")
         self.logger.debug(f"Running SMA {__version__} with config: {config}")
-        self.observers: list[SMAObserver] = observers
+        self.observers: list[SMAObserver] = [] if observers is None else observers
 
         self.session: Optional[SMASession] = None
         self.meta_session: Optional[SMASession] = meta
@@ -181,6 +185,9 @@ class SustainabilityMeasurementAgent(object):
             self.notify_observers("onRunTimeout")
             t.join(timeout=grace_period) #XXX Not sure this works...
             return "timeout", {}
+        finally:
+            cancel.set()
+            t.join(timeout=grace_period)
         
 
 
@@ -229,9 +236,8 @@ class SustainabilityMeasurementAgent(object):
             raise ValueError(f"Unknown observation mode: {mode}")
 
         if mode == "timer":
-            trigger = time_trigger
-            kwargs["duration"] = int(max_duration)+10
-
+            trigger = TimeTrigger()
+            kwargs["duration"] = int(max_duration)
         elif mode == "module":
             module_id = self.config.observation.module_trigger
             assert module_id is not None
@@ -260,7 +266,13 @@ class SustainabilityMeasurementAgent(object):
         treatment_start = datetime.datetime.now()
 
 
-        status, trigger_meta = self._run(max_duration, trigger, grace_period=0.2, **kwargs)
+        try:
+            status, trigger_meta = self._run(max_duration, trigger, grace_period=0.2, **kwargs)
+        except Exception as e:
+            status = "error"
+            trigger_meta = {
+                "error": str(e)
+            }
         self.logger.info(f"Trigger execution finished with status: {status}")
         self.logger.debug(f"Trigger metadata: {trigger_meta}")
 
@@ -339,5 +351,4 @@ class SustainabilityMeasurementAgent(object):
     def teardown(self) -> None:
         self.notify_observers("onSessionEnd")
         self.notify_observers("onTeardown")
-        #TODO: clean up clients, connections, etc.
 
