@@ -12,9 +12,9 @@ sma:
         locustfile: "./local/Teastore/examples/locust/locustfile.py"
         users: 10
         spawn_rate: 2
-        run_time: 32s
+        run_time: 3s
         deploy: true
-        namespace: telelocust
+        namespace: locust
         port_forward: True
   observation:
     # observation window mode: 
@@ -25,8 +25,8 @@ sma:
     mode: module 
     module_trigger: telelocust
     window:
-      left: 10s
-      right: 10s
+      left: 1s
+      right: 1s
       duration: 30s # only used in timer mode
     targets:
       # target name to be referenced later
