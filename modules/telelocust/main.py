@@ -4,13 +4,13 @@ import threading
 import time
 import zipfile
 from enum import Enum, auto
-from typing import Optional, Dict, Any
-
+from tempfile import NamedTemporaryFile
+from typing import Optional, Dict, Any, List
 import requests
 import urllib3
+import yaml
 
 from modules.telelocust.client import TeleLocustClient
-from sma import config
 from sma.model import SMAObserver, Triggerable
 from sma.report import Report
 import subprocess
@@ -31,6 +31,21 @@ class TelelocustForwarding(Enum):
     PROXY = auto(),
     NODEPORT = auto()
 
+#code to deal with patching yaml
+def deep_merge(base, patch):
+    if isinstance(patch, dict):
+        if not isinstance(base, dict):
+            base = {}
+        for k, v in patch.items():
+            base[k] = deep_merge(base.get(k), v)
+        return base
+    return patch
+
+def patch_if(resource: dict, patch: dict, predicate):
+    if predicate(resource):
+        return deep_merge(resource, patch)
+    return resource
+
 @dataclass
 class TelelocustConfig:
     sut_url: str
@@ -46,7 +61,7 @@ class TelelocustConfig:
     deploy : Optional[bool] = False
     telelocust_url : Optional[str] = f"http://localhost:{LOCAL_PORT}"
     port_forward : Optional[TelelocustForwarding] = TelelocustForwarding.DISABLED
-
+    nodeSelector : Optional[List[str]] = None # e.g. "kubernetes.io/arch=amd64"
 
     def validate(self) -> bool:
         assert len(self.sut_url) > 0, "SUT URL must be specified."
@@ -95,7 +110,7 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
 
         self.cancel : Optional[threading.Event]= None
 
-        self.deployed = False
+        self.deployment_file : Optional[str] = None
 
 
     def trigger(self, cancel: threading.Event, **kwargs) -> Optional[Dict[str, Any]]:
@@ -122,12 +137,44 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
             log.info(subprocess.run("pwd", shell=False, capture_output=True, text=True).stdout)
             log.info("Deploying TeleLocust infrastructure...")
             subprocess.run(["kubectl", "create", "namespace", self.config.namespace], capture_output=True, text=True) # create namespace if not exists, ignore error if it already exists
-            self.__kubectl(f"apply", DEPLOYMENT_YAML_PATH, namespace=self.config.namespace)
+
+            deployment_file = None
+            with DEPLOYMENT_YAML_PATH.open("r") as f:
+                data = f.read()
+                deployment_file = yaml.safe_load_all(data)
+
+            if self.config.nodeSelector:
+                patch = {
+                    "spec": {
+                        "template": {
+                            "spec": {
+                                "nodeSelector":  dict(selector.split('=') for selector in self.config.nodeSelector)
+                            }
+                        }
+                    }
+                }
+                ndeployment_file = []
+                for resource in deployment_file:
+                    patched_resource = patch_if(resource, patch, lambda r: r.get("kind") == "Deployment")
+                    ndeployment_file.append(patched_resource)
+                deployment_file = ndeployment_file
+
+                log.info(f"Patched deployment with nodeSelector: {self.config.nodeSelector}")
+
+            # Write the patched deployment to a temporary file
+            deployment_file_path = None
+            with NamedTemporaryFile(mode='w',delete=False) as temp_file:
+                yaml.safe_dump_all(deployment_file, temp_file)
+                deployment_file_path = temp_file.name
+                log.debug(f"Written patched deployment to temporary file: {deployment_file}")
+
+            self.__kubectl(f"apply", deployment_file_path, namespace=self.config.namespace)
+
             time.sleep(1)  # Wait for deployment to stabilize
             log.info("TeleLocust infrastructure deployed.")
-            _wait = subprocess.run(["kubectl", "-n", self.config.get("namespace"), "wait", "deploy/telelocust",
+            _wait = subprocess.run(["kubectl", "-n", self.config.namespace, "wait", "deployment/telelocust",
                                     "--for=condition=Available", "--timeout=600s"])
-            self.deployed = True
+            self.deployment_file = deployment_file_path
 
         TELELOCUST_URL = None
         if self.__port_forward_enabled():
@@ -180,9 +227,9 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
             log.info("Stopping port forwarding...")
             self.port_forward_process.terminate()
 
-        if self.__deploy_enabled() and self.deployed:
+        if self.__deploy_enabled() and self.deployment_file:
             log.info("Tearing down TeleLocust infrastructure...")
-            self.__kubectl(f"delete -n {self.config.namespace}", DEPLOYMENT_YAML_PATH, namespace=self.config.namespace)
+            self.__kubectl(f"delete -n {self.config.namespace}", self.deployment_file, namespace=self.config.namespace)
             log.info("TeleLocust infrastructure torn down.")
 
     def __kubectl(self, command: str, file: str, namespace: str = None) -> str:

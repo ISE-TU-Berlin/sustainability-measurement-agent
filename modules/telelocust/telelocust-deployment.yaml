@@ -30,6 +30,13 @@ spec:
             port: 5123
           initialDelaySeconds: 3
           periodSeconds: 3
+      # allow to schedule on control-plane nodes for kind clusters, in real clusters this should be configured according to the cluster setup
+      tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/master
+        effect: NoSchedule
+
 
 ---
 apiVersion: v1
