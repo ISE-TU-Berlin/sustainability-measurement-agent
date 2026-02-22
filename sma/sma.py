@@ -160,7 +160,7 @@ class SustainabilityMeasurementAgent(object):
         return results
 
 
-    def _run(self, max_duration: int, trigger: Triggerable, grace_period=0.2,  **kwargs) -> Optional[Tuple[str,Dict[str, Any]]]:
+    def _run(self, max_duration: Optional[int], trigger: Triggerable, grace_period=0.2,  **kwargs) -> Optional[Tuple[str,Dict[str, Any]]]:
         cancel = threading.Event()
         q = queue.Queue()
 
@@ -267,7 +267,11 @@ class SustainabilityMeasurementAgent(object):
 
 
         try:
-            status, trigger_meta = self._run(max_duration, trigger, grace_period=0.2, **kwargs)
+            if max_duration:
+                status, trigger_meta = self._run(max_duration, trigger, grace_period=0.2, **kwargs)
+            else:
+                trigger_meta = trigger.trigger(cancel=threading.Event(), **kwargs)
+                status = "ok"
         except Exception as e:
             status = "error"
             trigger_meta = {
