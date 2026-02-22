@@ -16,6 +16,7 @@ sma:
         deploy: true
         namespace: locust
         port_forward: NODEPORT
+        nodeIP: localhost
   observation:
     # observation window mode: 
     # - trigger (python function that blocks),

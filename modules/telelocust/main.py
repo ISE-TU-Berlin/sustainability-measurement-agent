@@ -62,6 +62,7 @@ class TelelocustConfig:
     telelocust_url : Optional[str] = f"http://localhost:{LOCAL_PORT}"
     port_forward : Optional[TelelocustForwarding] = TelelocustForwarding.DISABLED
     nodeSelector : Optional[List[str]] = None # e.g. "kubernetes.io/arch=amd64"
+    nodeIP : Optional[str] = None # only needed if using nodeport forwarding and automatic node IP detection fails
 
     def validate(self) -> bool:
         assert len(self.sut_url) > 0, "SUT URL must be specified."
@@ -134,68 +135,18 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
     #XXX: we should ask the user (in the config) which kube context we want to use ...
     def onSetup(self):
         if self.__deploy_enabled():
-            log.info(subprocess.run("pwd", shell=False, capture_output=True, text=True).stdout)
-            log.info("Deploying TeleLocust infrastructure...")
-            subprocess.run(["kubectl", "create", "namespace", self.config.namespace], capture_output=True, text=True) # create namespace if not exists, ignore error if it already exists
-
-            deployment_file = None
-            with DEPLOYMENT_YAML_PATH.open("r") as f:
-                data = f.read()
-                deployment_file = yaml.safe_load_all(data)
-
-            if self.config.nodeSelector:
-                patch = {
-                    "spec": {
-                        "template": {
-                            "spec": {
-                                "nodeSelector":  dict(selector.split('=') for selector in self.config.nodeSelector)
-                            }
-                        }
-                    }
-                }
-                ndeployment_file = []
-                for resource in deployment_file:
-                    patched_resource = patch_if(resource, patch, lambda r: r.get("kind") == "Deployment")
-                    ndeployment_file.append(patched_resource)
-                deployment_file = ndeployment_file
-
-                log.info(f"Patched deployment with nodeSelector: {self.config.nodeSelector}")
-
-            # Write the patched deployment to a temporary file
-            deployment_file_path = None
-            with NamedTemporaryFile(mode='w',delete=False) as temp_file:
-                yaml.safe_dump_all(deployment_file, temp_file)
-                deployment_file_path = temp_file.name
-                log.debug(f"Written patched deployment to temporary file: {deployment_file}")
-
-            self.__kubectl(f"apply", deployment_file_path, namespace=self.config.namespace)
-
-            time.sleep(1)  # Wait for deployment to stabilize
-            log.info("TeleLocust infrastructure deployed.")
-            _wait = subprocess.run(["kubectl", "-n", self.config.namespace, "wait", "deployment/telelocust",
-                                    "--for=condition=Available", "--timeout=600s"])
-            self.deployment_file = deployment_file_path
+            self.deploy()
 
         TELELOCUST_URL = None
         if self.__port_forward_enabled():
             #TODO: XXX: don't we aks which namespace to use in the config
             if log.level >= logging.DEBUG:
-                log.debug(f"kubectl wait deploy/telelocust --for=condition=Available --timeout=600s returned {_wait.returncode}")
                 log.debug(subprocess.run(["kubectl", "get", "pods", "-n", self.config.get("namespace")], capture_output=True, text=True).stdout)
             if self.config.port_forward == TelelocustForwarding.PROXY:
-                self.kubectl_port_forward()
-                TELELOCUST_URL = f"http://localhost:{LOCAL_PORT}"
+                TELELOCUST_URL = self.kubectl_port_forward()
             elif self.config.port_forward == TelelocustForwarding.NODEPORT:
                 #TODO: it would be much better to do this with a porpper client
-                assignedNodeport = subprocess.check_output(["kubectl","get","-n",self.config.namespace,"svc","telelocust","-o","jsonpath={.spec.ports[0].nodePort}"]).decode("utf-8").strip()
-                # The assumption is that the IP of the control plane is the same as the IP we can use to access the cluster
-                nodeIPString = subprocess.check_output(["kubectl","config","view","--minify","-o","jsonpath={.clusters[0].cluster.server}"]).decode("utf-8").strip()
-                nodeIPUrl = urllib3.util.parse_url(nodeIPString)
-                nodeIP = nodeIPUrl.host
-                TELELOCUST_URL = f"http://{nodeIP}:{assignedNodeport}"
-                if log.level >= logging.DEBUG:
-                    log.debug(f"TeleLocust nodeport assigned: {assignedNodeport}")
-                    log.debug(f"connecting to {TELELOCUST_URL} with {requests.get(TELELOCUST_URL+'/healthz').status_code}")
+                TELELOCUST_URL = self.nodeport_forward()
         else:
             TELELOCUST_URL = self.config.get("telelocust_url", f"http://localhost:{LOCAL_PORT}")
 
@@ -203,10 +154,79 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
         assert urllib3.util.parse_url(TELELOCUST_URL).scheme == "http", "TeleLocust URL must be HTTP."
         log.info(f"TeleLocust URL: {TELELOCUST_URL}")
         self.telelocust_client = TeleLocustClient(TELELOCUST_URL)
-
         assert self.telelocust_client is not None, "TeleLocust client not initialized."
+        check = self.telelocust_client.health_check()
+        if check is None:
+            raise RuntimeError("TeleLocust health check failed. Cannot connect to TeleLocust at " + TELELOCUST_URL)
+        log.info("TeleLocust health check passed.")
 
-    def kubectl_port_forward(self):
+    def nodeport_forward(self) -> str:
+        assignedNodeport = subprocess.check_output(
+            ["kubectl", "get", "-n", self.config.namespace, "svc", "telelocust", "-o",
+             "jsonpath={.spec.ports[0].nodePort}"]).decode("utf-8").strip()
+        if self.config.nodeIP:
+            nodeIP = self.config.nodeIP
+        else:
+            log.warning("Attempting to determine node IP automatically. This operation is brittle, better use the 'nodeIP' configuration option.")
+         # The assumption is that the IP of the control plane is the same as the IP we can use to access the cluster
+            nodeIPString = subprocess.check_output(
+                ["kubectl", "config", "view", "--minify", "-o", "jsonpath={.clusters[0].cluster.server}"]).decode(
+                "utf-8").strip()
+            nodeIPUrl = urllib3.util.parse_url(nodeIPString)
+            nodeIP = nodeIPUrl.host
+
+        TELELOCUST_URL = f"http://{nodeIP}:{assignedNodeport}"
+        log.debug(f"TeleLocust nodeport assigned: {assignedNodeport}")
+        return TELELOCUST_URL
+
+    def deploy(self):
+        log.info(subprocess.run("pwd", shell=False, capture_output=True, text=True).stdout)
+        log.info("Deploying TeleLocust infrastructure...")
+        subprocess.run(["kubectl", "create", "namespace", self.config.namespace], capture_output=True,
+                       text=True)  # create namespace if not exists, ignore error if it already exists
+
+        deployment_file = None
+        with DEPLOYMENT_YAML_PATH.open("r") as f:
+            data = f.read()
+            deployment_file = yaml.safe_load_all(data)
+
+        if self.config.nodeSelector:
+            patch = {
+                "spec": {
+                    "template": {
+                        "spec": {
+                            "nodeSelector": dict(selector.split('=') for selector in self.config.nodeSelector)
+                        }
+                    }
+                }
+            }
+            ndeployment_file = []
+            for resource in deployment_file:
+                patched_resource = patch_if(resource, patch, lambda r: r.get("kind") == "Deployment")
+                ndeployment_file.append(patched_resource)
+            deployment_file = ndeployment_file
+
+            log.info(f"Patched deployment with nodeSelector: {self.config.nodeSelector}")
+
+        # Write the patched deployment to a temporary file
+        deployment_file_path = None
+        with NamedTemporaryFile(mode='w', delete=False) as temp_file:
+            yaml.safe_dump_all(deployment_file, temp_file)
+            deployment_file_path = temp_file.name
+            log.debug(f"Written patched deployment to temporary file: {deployment_file}")
+
+        self.__kubectl(f"apply", deployment_file_path, namespace=self.config.namespace)
+
+        time.sleep(1)  # Wait for deployment to stabilize
+        log.info("TeleLocust infrastructure deployed.")
+        _wait = subprocess.run(["kubectl", "-n", self.config.namespace, "wait", "deployment/telelocust",
+                                "--for=condition=Available", "--timeout=600s"])
+        log.debug(
+            f"kubectl wait deploy/telelocust --for=condition=Available --timeout=600s returned {_wait.returncode}")
+        self.deployment_file = deployment_file_path
+        assert _wait.returncode == 0, "TeleLocust deployment did not become available in time."
+
+    def kubectl_port_forward(self) -> str:
         # Start port forwarding in the background
         self.port_forward_process = subprocess.Popen(
             ["kubectl", "port-forward", "deployment/telelocust", f"{LOCAL_PORT}:5123", "-n",
@@ -221,6 +241,7 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
         if self.port_forward_process.poll() is not None:
             raise RuntimeError("Port forwarding process terminated unexpectedly.")
         log.info("Port forwarding established.")
+        return f"http://localhost:{LOCAL_PORT}"
 
     def onTeardown(self):
         if self.__port_forward_enabled() and hasattr(self, 'port_forward_process'):

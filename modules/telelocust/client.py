@@ -42,7 +42,15 @@ class TeleLocustClient:
     def get_run_status(self):
         response = requests.get(f'{self.telelocust_url}/runs/{self.token}', timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
-        return response.json() 
+        return response.json()
+
+    def health_check(self) -> bool:
+        response = requests.get(f'{self.telelocust_url}/healthz')
+        if response.status_code == 200:
+            return True
+        else:
+            log.warning(f"Health check failed with status code: {response.status_code}")
+            return False
 
     def wait_for_run_completion(self, cancel: threading.Event, polling_interval_seconds=WORKLOAD_POLLING_FREQUENCY_SECONDS, max_retries=POLLING_RETRIES):
         retries = 0
