@@ -36,6 +36,13 @@ def test_deploy():
         if doc['kind'] == 'Deployment':
             assert "myregistry/myimage:latest" in doc['spec']['template']['spec']['containers'][0]['image']
 
+    cnf.imagePullSecrets = "myregistrykey"
+    le_file = make_config_from_cnf(cnf)
+    for doc in le_file:
+        if doc['kind'] == 'Deployment':
+            assert "myregistrykey" in doc['spec']['template']['spec']['imagePullSecrets'][0]['name']
+
+
 
 
 def make_config_from_cnf(cnf):

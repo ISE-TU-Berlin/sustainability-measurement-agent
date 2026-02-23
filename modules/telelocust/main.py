@@ -64,6 +64,7 @@ class TelelocustConfig:
     nodeSelector : Optional[List[str]] = None # e.g. "kubernetes.io/arch=amd64"
     nodeIP : Optional[str] = None # only needed if using nodeport forwarding and automatic node IP detection fails
     image : Optional[str] = None # default "ghcr.io/wolfkarl/telelocust"
+    imagePullSecrets : Optional[str] = None # e.g. ["myregistrykey1"]
 
     def validate(self) -> bool:
         assert len(self.sut_url) > 0, "SUT URL must be specified."
@@ -256,6 +257,25 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
             deployment_file = ndeployment_file
 
             log.info(f"Patched deployment with image: {self.config.image}")
+        if self.config.imagePullSecrets:
+            patch = {
+                "spec": {
+                    "template": {
+                        "spec": {
+                            "imagePullSecrets": [{"name": self.config.imagePullSecrets}]
+                        }
+                    }
+                }
+            }
+
+            ndeployment_file = []
+            for resource in deployment_file:
+                patched_resource = patch_if(resource, patch, lambda r: r.get("kind") == "Deployment")
+                ndeployment_file.append(patched_resource)
+            deployment_file = ndeployment_file
+
+            log.info(f"Patched deployment with imagePullSecrets: {self.config.imagePullSecrets}")
+
         # Write the patched deployment to a temporary file
         deployment_file_path = None
         with NamedTemporaryFile(mode='w', delete=False) as temp_file:
