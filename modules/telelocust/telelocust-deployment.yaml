@@ -17,13 +17,6 @@ spec:
         image: ghcr.io/wolfkarl/telelocust
         ports:
         - containerPort: 5123
-        # resources:
-        #   requests:
-        #     memory: "256Mi"
-        #     cpu: "250m"
-        #   limits:
-        #     memory: "512Mi"
-        #     cpu: "500m"
         livenessProbe:
           httpGet:
             path: /healthz
@@ -36,8 +29,6 @@ spec:
         effect: NoSchedule
       - key: node-role.kubernetes.io/master
         effect: NoSchedule
-
-
 ---
 apiVersion: v1
 kind: Service

@@ -6,7 +6,6 @@ import zipfile
 from enum import Enum, auto
 from tempfile import NamedTemporaryFile
 from typing import Optional, Dict, Any, List
-import requests
 import urllib3
 import yaml
 
@@ -61,8 +60,10 @@ class TelelocustConfig:
     deploy : Optional[bool] = False
     telelocust_url : Optional[str] = f"http://localhost:{LOCAL_PORT}"
     port_forward : Optional[TelelocustForwarding] = TelelocustForwarding.DISABLED
+
     nodeSelector : Optional[List[str]] = None # e.g. "kubernetes.io/arch=amd64"
     nodeIP : Optional[str] = None # only needed if using nodeport forwarding and automatic node IP detection fails
+    image : Optional[str] = None # default "ghcr.io/wolfkarl/telelocust"
 
     def validate(self) -> bool:
         assert len(self.sut_url) > 0, "SUT URL must be specified."
@@ -73,7 +74,16 @@ class TelelocustConfig:
 
     @staticmethod
     def from_dict(config: dict) -> "TelelocustConfig":
-        config["port_forward"] = TelelocustForwarding[config.get("port_forward", "DISABLED").upper()]
+        if "port_forward" in config:
+            if isinstance(config["port_forward"], bool):
+                config["port_forward"] = TelelocustForwarding.PROXY if config["port_forward"] else TelelocustForwarding.DISABLED
+            elif isinstance(config["port_forward"], str):
+                config["port_forward"] = TelelocustForwarding[config.get("port_forward", "DISABLED").upper()]
+            elif isinstance(config["port_forward"], TelelocustForwarding):
+                pass
+            else:
+                config["port_forward"] = TelelocustForwarding.DISABLED
+                log.warning(f"Invalid port_forward configuration: {config}, defaulting to DISABLED.")
         # Fix backward compatibility
         if "ramp" in config and "spawn_rate" not in config:
             config["spawn_rate"] = config["ramp"]
@@ -185,6 +195,20 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
         subprocess.run(["kubectl", "create", "namespace", self.config.namespace], capture_output=True,
                        text=True)  # create namespace if not exists, ignore error if it already exists
 
+        deployment_file_path = self.prepare_deployment_file()
+
+        self.__kubectl(f"apply", deployment_file_path, namespace=self.config.namespace)
+
+        time.sleep(1)  # Wait for deployment to stabilize
+        log.info("TeleLocust infrastructure deployed.")
+        _wait = subprocess.run(["kubectl", "-n", self.config.namespace, "wait", "deployment/telelocust",
+                                "--for=condition=Available", "--timeout=600s"])
+        log.debug(
+            f"kubectl wait deploy/telelocust --for=condition=Available --timeout=600s returned {_wait.returncode}")
+        self.deployment_file = deployment_file_path
+        assert _wait.returncode == 0, "TeleLocust deployment did not become available in time."
+
+    def prepare_deployment_file(self):
         deployment_file = None
         with DEPLOYMENT_YAML_PATH.open("r") as f:
             data = f.read()
@@ -200,6 +224,7 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
                     }
                 }
             }
+
             ndeployment_file = []
             for resource in deployment_file:
                 patched_resource = patch_if(resource, patch, lambda r: r.get("kind") == "Deployment")
@@ -208,23 +233,36 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
 
             log.info(f"Patched deployment with nodeSelector: {self.config.nodeSelector}")
 
+        if self.config.image:
+            patch = {
+                "spec": {
+                    "template": {
+                        "spec": {
+                            "containers": [
+                                {
+                                    "name": "telelocust",
+                                    "image": self.config.image
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+
+            ndeployment_file = []
+            for resource in deployment_file:
+                patched_resource = patch_if(resource, patch, lambda r: r.get("kind") == "Deployment")
+                ndeployment_file.append(patched_resource)
+            deployment_file = ndeployment_file
+
+            log.info(f"Patched deployment with image: {self.config.image}")
         # Write the patched deployment to a temporary file
         deployment_file_path = None
         with NamedTemporaryFile(mode='w', delete=False) as temp_file:
             yaml.safe_dump_all(deployment_file, temp_file)
             deployment_file_path = temp_file.name
             log.debug(f"Written patched deployment to temporary file: {deployment_file}")
-
-        self.__kubectl(f"apply", deployment_file_path, namespace=self.config.namespace)
-
-        time.sleep(1)  # Wait for deployment to stabilize
-        log.info("TeleLocust infrastructure deployed.")
-        _wait = subprocess.run(["kubectl", "-n", self.config.namespace, "wait", "deployment/telelocust",
-                                "--for=condition=Available", "--timeout=600s"])
-        log.debug(
-            f"kubectl wait deploy/telelocust --for=condition=Available --timeout=600s returned {_wait.returncode}")
-        self.deployment_file = deployment_file_path
-        assert _wait.returncode == 0, "TeleLocust deployment did not become available in time."
+        return deployment_file_path
 
     def kubectl_port_forward(self) -> str:
         # Start port forwarding in the background
