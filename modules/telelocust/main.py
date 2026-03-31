@@ -54,17 +54,19 @@ class TelelocustConfig:
     users : Optional[int] = 10
     spawn_rate : Optional[int] = 2
     run_time : Optional[str] = "30s"
+    telelocust_url: Optional[str] = f"http://localhost:{LOCAL_PORT}"
 
     # deployment options
-    namespace: str = "locust"
     deploy : Optional[bool] = False
-    telelocust_url : Optional[str] = f"http://localhost:{LOCAL_PORT}"
-    port_forward : Optional[TelelocustForwarding] = TelelocustForwarding.DISABLED
+    namespace: str = "locust"
+    image: Optional[str] = None  # default "ghcr.io/wolfkarl/telelocust"
+    imagePullSecrets: Optional[str] = None  # e.g. ["myregistrykey1"]
 
+
+    # networking options
+    port_forward : Optional[TelelocustForwarding] = TelelocustForwarding.DISABLED
     nodeSelector : Optional[List[str]] = None # e.g. "kubernetes.io/arch=amd64"
     nodeIP : Optional[str] = None # only needed if using nodeport forwarding and automatic node IP detection fails
-    image : Optional[str] = None # default "ghcr.io/wolfkarl/telelocust"
-    imagePullSecrets : Optional[str] = None # e.g. ["myregistrykey1"]
 
     def validate(self) -> bool:
         assert len(self.sut_url) > 0, "SUT URL must be specified."
@@ -166,10 +168,26 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
         log.info(f"TeleLocust URL: {TELELOCUST_URL}")
         self.telelocust_client = TeleLocustClient(TELELOCUST_URL)
         assert self.telelocust_client is not None, "TeleLocust client not initialized."
-        check = self.telelocust_client.health_check()
+
+        self.wait_for_client_or_fail(TELELOCUST_URL)
+
+        log.info("TeleLocust health check passed.")
+
+    def wait_for_client_or_fail(self,TELELOCUST_URL, retires=10 ):
+        check = None
+        for i in range(retires):
+            try:
+                check = self.telelocust_client.health_check()
+                if check:
+                    break
+            except Exception as e:
+                check = None
+                pass
+
+            time.sleep(1 * (i + 1))  # wait a bit longer between each retry
+
         if check is None:
             raise RuntimeError("TeleLocust health check failed. Cannot connect to TeleLocust at " + TELELOCUST_URL)
-        log.info("TeleLocust health check passed.")
 
     def nodeport_forward(self) -> str:
         assignedNodeport = subprocess.check_output(
@@ -195,7 +213,6 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
         log.info("Deploying TeleLocust infrastructure...")
         subprocess.run(["kubectl", "create", "namespace", self.config.namespace], capture_output=True,
                        text=True)  # create namespace if not exists, ignore error if it already exists
-
         deployment_file_path = self.prepare_deployment_file()
 
         self.__kubectl(f"apply", deployment_file_path, namespace=self.config.namespace)
@@ -308,7 +325,7 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
 
         if self.__deploy_enabled() and self.deployment_file:
             log.info("Tearing down TeleLocust infrastructure...")
-            self.__kubectl(f"delete -n {self.config.namespace}", self.deployment_file, namespace=self.config.namespace)
+            self.__kubectl(f"delete", self.deployment_file, namespace=self.config.namespace)
             log.info("TeleLocust infrastructure torn down.")
 
     def __kubectl(self, command: str, file: str, namespace: str = None) -> str:
@@ -322,8 +339,7 @@ class TelelocustSmaModule(SMAObserver, Triggerable):
             text=True,
             # shell=True,
         )
-        log.debug(f"kubectl stdout: {result.stdout}")
-        log.debug(f"kubectl stderr: {result.stderr}")
+        log.debug(f"kubectl stdout: {result.stdout}  {result.stderr}")
         if result.returncode != 0:
             raise RuntimeError(f"kubectl command failed: {result.stderr}")
         return result.stdout

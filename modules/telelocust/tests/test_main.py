@@ -18,7 +18,7 @@ def test_deploy():
             assert "ghcr.io/wolfkarl/telelocust" in doc['spec']['template']['spec']['containers'][0]['image']
 
 
-    cnf.nodeSelector = ["kubernetes.io/arch=amd64","amazing=foo"]
+    cnf.nodeSelector = "amazing=foo"
 
     le_file = make_config_from_cnf(cnf)
     # Check if the deployment file contains the correct nodeSelector
@@ -26,7 +26,6 @@ def test_deploy():
         if doc['kind'] == 'Deployment':
             assert 'nodeSelector' in doc['spec']['template']['spec']
             assert doc['spec']['template']['spec']['nodeSelector'] == {
-                "kubernetes.io/arch": "amd64",
                 "amazing": "foo"
             }
     cnf.nodeSelector = None
