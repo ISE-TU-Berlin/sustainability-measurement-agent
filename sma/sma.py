@@ -10,6 +10,7 @@ from logging import Logger, getLogger
 from time import sleep
 from typing import Generator, Optional, Dict, Any, Tuple, List
 
+from sma import __version__
 from sma.config import Config
 from sma.model import (
     SMAObserver, Triggerable,
@@ -18,7 +19,6 @@ from sma.model import (
 from sma.report import Report
 from sma.service import ServiceException
 
-from sma import __version__
 
 def make_run_hash(start_time: datetime.datetime) -> str:
     hash_input = f"{start_time.isoformat()}_{random.random()}"
@@ -119,7 +119,10 @@ class SustainabilityMeasurementAgent(object):
         for observer in self.observers:
             method = getattr(observer, event, None)
             if callable(method):
-                method(**kwargs)
+                try:
+                    method(**kwargs)
+                except Exception as e:
+                    self.logger.error(f"Error calling event {event} on observer {observer}: {e}")
             else:
                 self.logger.debug(f"tried calling inexistent event {event} on observer {observer}")
 
