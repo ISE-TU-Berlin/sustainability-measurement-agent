@@ -1,0 +1,11 @@
+kubernetes
+pyyaml
+pandas>=2.3.0
+requests
+click
+rich
+numpy
+
+[test]
+pytest>=7.0
+pytest-kubernetes>=0.3.0

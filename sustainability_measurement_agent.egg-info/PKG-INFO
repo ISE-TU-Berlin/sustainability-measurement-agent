@@ -1,3 +1,30 @@
+Metadata-Version: 2.4
+Name: sustainability-measurement-agent
+Version: 0.2.1
+Summary: Sustainability Measurement Agent - A tool for collecting and analyzing sustainability metrics in cloud native enviroments.
+Author: ISE TU Berlin
+Author-email: Sebastian Werner <werner@tu-berlin.de>, Karl Wolf <k.wolf@tu-berlin.de>
+Project-URL: Homepage, https://github.com/ISE-TU-Berlin/sustainability-measurement-agent
+Keywords: sustainability,measurements,agent
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Software Development :: Libraries
+Classifier: Topic :: System :: Monitoring
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENCE
+Requires-Dist: kubernetes
+Requires-Dist: pyyaml
+Requires-Dist: pandas>=2.3.0
+Requires-Dist: requests
+Requires-Dist: click
+Requires-Dist: rich
+Requires-Dist: numpy
+Provides-Extra: test
+Requires-Dist: pytest>=7.0; extra == "test"
+Requires-Dist: pytest-kubernetes>=0.3.0; extra == "test"
+Dynamic: license-file
+
 # Sustainability Measurements Agent (SMA)
 
 [![PyPI - Version](https://img.shields.io/pypi/v/sustainability-measurement-agent)](https://pypi.org/project/sustainability-measurement-agent/) | [![Upload Python Package](https://github.com/ISE-TU-Berlin/sustainability-measurement-agent/actions/workflows/python-publish.yml/badge.svg)](https://github.com/ISE-TU-Berlin/sustainability-measurement-agent/actions/workflows/python-publish.yml)
@@ -169,7 +196,7 @@ measurements:
 
 | Field | Options/Type                          | Description |
 |-------|---------------------------------------|-------------|
-| `type` | `raw`, `aggregate`, `counter`, `gauge` | **raw**: Unprocessed metric data<br>**aggregate**: Aggregated/computed metrics |
+| `type` | `raw`, `aggregate`, `counter`, `guage` | **raw**: Unprocessed metric data<br>**aggregate**: Aggregated/computed metrics |
 | `layer` | `substrate`,`pod`, `node`, `process`  | The abstraction level being measured |
 | `query` | PromQL string                         | Prometheus query to retrieve the metric. Supports template variables:<br>`${namespace}`: Replaced with target namespace<br>`${SMA_SELECTORS}`: Additional label filters |
 | `sensors` | List of strings                       | List of sensors required for this measurement (used with `prepared_query`) |

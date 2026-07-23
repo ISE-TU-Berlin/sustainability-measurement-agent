@@ -108,7 +108,7 @@ class SustainabilityMeasurementAgent(object):
 
     def setup(self, session:SMASession):
         self.notify_observers("onSetup")
-        self.logger.debug("Setting up logger with session {session}")
+        self.logger.debug(f"Setting up logger with session {session}")
         self.session = session
 
     def notify_observers(self, event: str, **kwargs) -> None:

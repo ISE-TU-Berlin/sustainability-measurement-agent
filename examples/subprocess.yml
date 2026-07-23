@@ -1,0 +1,273 @@
+sma:
+  version: 0.2.0
+  services:
+    prometheus:
+      address: http://prometheus.zodiac.svc.cluster.local:9090
+
+  modules:
+    subprocess:
+      module: SubprocessRunner
+      config:
+        # telelocust_url: 
+        workdir: "/workspaces/expod/ZODIAC-Tools/test-suite"
+        setup_command: "uv sync"
+        trigger_command: "uv run pytest"
+        
+
+  observation:
+    mode: module
+    module_trigger: subprocess
+    max_duration: 60s
+    window:
+      left: 10s
+      right: 10s
+
+    targets:
+      # target name to be referenced later
+      - name: zodiac
+        namespace: zodiac
+
+  report:
+    location: reports/${startTime}_${runHash}
+
+  measurements:
+    # we are using python string templating, you can (and should) specify where additional labels with ${SMA_SELECTORS} otherwise results might be unfiltered
+    - system_CPU: # name of the measurment in the report
+        type: aggregate # type of the measurment (raw, aggregate) 
+        layer: pod # layer of the measurment (pod, node, container)
+        query: sum(rate(container_cpu_usage_seconds_total{namespace="${namespace}"}[1m]))
+        step: 5 # sampling step in seconds
+        unit: cpu_time_seconds # unit of the measurment
+        target:
+          - all # target name defined in the observation section (all for all targets)
+
+    - node_power_consumption_kepler:
+        type: aggregate
+        layer: node
+        query: sum by (node) (rate(kepler_node_cpu_joules_total[1m]))
+        unit: watts
+        step: 5
+        target:
+          - zodiac
+
+
+    # These measurements focus on the current MCP request path:
+    # benchmark -> mcp-client -> mcp-server.
+    # Kepler energy metrics are still unavailable in this cluster, so the
+    # configuration uses Prometheus application and process metrics instead.
+    - mcp_client_cpu:
+        type: aggregate
+        layer: service
+        query: rate(process_cpu_seconds_total{job="mcp-client"}[1m])
+        step: 5
+        unit: cpu_seconds_per_second
+
+    - mcp_client_memory:
+        type: aggregate
+        layer: service
+        query: process_resident_memory_bytes{job="mcp-client"}
+        step: 5
+        unit: bytes
+
+    - mcp_server_cpu:
+        type: aggregate
+        layer: service
+        query: rate(process_cpu_seconds_total{job="mcp-server"}[1m])
+        step: 5
+        unit: cpu_seconds_per_second
+
+    - mcp_server_memory:
+        type: aggregate
+        layer: service
+        query: process_resident_memory_bytes{job="mcp-server"}
+        step: 5
+        unit: bytes
+
+    - mcp_client_virtual_memory:
+        type: aggregate
+        layer: service
+        query: process_virtual_memory_bytes{job="mcp-client"}
+        step: 5
+        unit: bytes
+
+    - mcp_server_virtual_memory:
+        type: aggregate
+        layer: service
+        query: process_virtual_memory_bytes{job="mcp-server"}
+        step: 5
+        unit: bytes
+
+    - mcp_client_open_fds:
+        type: aggregate
+        layer: service
+        query: process_open_fds{job="mcp-client"}
+        step: 5
+        unit: file_descriptors
+
+    - mcp_server_open_fds:
+        type: aggregate
+        layer: service
+        query: process_open_fds{job="mcp-server"}
+        step: 5
+        unit: file_descriptors
+
+    - mcp_client_fd_utilization:
+        type: aggregate
+        layer: service
+        query: process_open_fds{job="mcp-client"} / process_max_fds{job="mcp-client"}
+        step: 5
+        unit: ratio
+
+    - mcp_server_fd_utilization:
+        type: aggregate
+        layer: service
+        query: process_open_fds{job="mcp-server"} / process_max_fds{job="mcp-server"}
+        step: 5
+        unit: ratio
+
+    - mcp_client_gc_collection_rate:
+        type: aggregate
+        layer: service
+        query: sum(rate(python_gc_collections_total{job="mcp-client"}[1m]))
+        step: 5
+        unit: collections_per_second
+
+    - mcp_server_gc_collection_rate:
+        type: aggregate
+        layer: service
+        query: sum(rate(python_gc_collections_total{job="mcp-server"}[1m]))
+        step: 5
+        unit: collections_per_second
+
+    - agent_cpu:
+        type: aggregate
+        layer: service
+        query: rate(process_cpu_seconds_total{job="agent"}[1m])
+        step: 5
+        unit: cpu_seconds_per_second
+
+    - agent_memory:
+        type: aggregate
+        layer: service
+        query: process_resident_memory_bytes{job="agent"}
+        step: 5
+        unit: bytes
+
+    - agent_virtual_memory:
+        type: aggregate
+        layer: service
+        query: process_virtual_memory_bytes{job="agent"}
+        step: 5
+        unit: bytes
+
+    - agent_open_fds:
+        type: aggregate
+        layer: service
+        query: process_open_fds{job="agent"}
+        step: 5
+        unit: file_descriptors
+
+    - agent_fd_utilization:
+        type: aggregate
+        layer: service
+        query: process_open_fds{job="agent"} / process_max_fds{job="agent"}
+        step: 5
+        unit: ratio
+
+    - agent_gc_collection_rate:
+        type: aggregate
+        layer: service
+        query: sum(rate(python_gc_collections_total{job="agent"}[1m]))
+        step: 5
+        unit: collections_per_second
+
+    - agent_active_count:
+        type: aggregate
+        layer: service
+        query: agent_active_count{job="agent"}
+        step: 5
+        unit: agents
+
+    - agent_create_rate:
+        type: aggregate
+        layer: service
+        query: rate(agent_create_total{job="agent"}[1m])
+        step: 5
+        unit: agent_creations_per_second
+
+    - agent_successful_job_rate:
+        type: aggregate
+        layer: service
+        query: rate(agent_jobs_total{job="agent",status="success"}[1m])
+        step: 5
+        unit: jobs_per_second
+
+    - agent_failed_job_rate:
+        type: aggregate
+        layer: service
+        query: rate(agent_jobs_total{job="agent",status="failed"}[1m])
+        step: 5
+        unit: jobs_per_second
+
+    - agent_avg_job_duration_ms:
+        type: aggregate
+        layer: service
+        query: rate(agent_job_duration_ms_sum{job="agent"}[1m]) / rate(agent_job_duration_ms_count{job="agent"}[1m])
+        step: 5
+        unit: milliseconds
+
+    - agent_avg_mcp_request_duration_ms:
+        type: aggregate
+        layer: service
+        query: rate(agent_mcp_request_duration_ms_sum{job="agent"}[1m]) / rate(agent_mcp_request_duration_ms_count{job="agent"}[1m])
+        step: 5
+        unit: milliseconds
+
+    - mcp_client_chat_success_rate:
+        type: aggregate
+        layer: service
+        query: sum(rate(zodiac_mcp_client_chat_requests_total{job="mcp-client",outcome="success"}[1m]))
+        step: 5
+        unit: requests_per_second
+
+    - mcp_client_avg_request_duration:
+        type: aggregate
+        layer: service
+        query: sum(rate(zodiac_mcp_client_chat_request_duration_seconds_sum{job="mcp-client"}[1m])) / sum(rate(zodiac_mcp_client_chat_request_duration_seconds_count{job="mcp-client"}[1m]))
+        step: 5
+        unit: seconds
+
+    - mcp_client_tool_call_rate:
+        type: aggregate
+        layer: service
+        query: sum(rate(zodiac_mcp_client_tool_calls_total{job="mcp-client"}[1m]))
+        step: 5
+        unit: tool_calls_per_second
+
+    - mcp_server_tool_call_rate:
+        type: aggregate
+        layer: service
+        query: sum(rate(zodiac_mcp_server_tool_calls_total{job="mcp-server"}[1m]))
+        step: 5
+        unit: tool_calls_per_second
+
+    - elise_gpu_power_mw:
+        type: aggregate
+        layer: service
+        query: mac_gpu_power_mw{job="elise",instance="elise.ise.tu-berlin.de:9101"}
+        step: 5
+        unit: milliwatts
+
+    - elise_gpu_temperature_celsius:
+        type: aggregate
+        layer: service
+        query: mac_gpu_temperature_celsius{job="elise",instance="elise.ise.tu-berlin.de:9101"}
+        step: 5
+        unit: celsius
+
+    - elise_gpu_utilization_percent:
+        type: aggregate
+        layer: service
+        query: mac_gpu_utilisation_percent{job="elise",instance="elise.ise.tu-berlin.de:9101"}
+        step: 5
+        unit: percent
