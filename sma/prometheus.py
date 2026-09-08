@@ -459,7 +459,7 @@ class PrometheusMetric(ResponseVariable):
                 return float(metric_value)
             except (TypeError, ValueError):
                 return metric_value
-
+    
     def _range_query_to_df(self, json_data) -> Optional[pd.DataFrame]:
         """
         Return pandas dataframe from prometheus range query json response
@@ -467,33 +467,31 @@ class PrometheusMetric(ResponseVariable):
         We index the dataframe by the supplied timestamp from Prometheus
         """
         try:
-            results = json_data["data"]["result"]
+            results = json_data["data"]["result"]   # a list, iterated twice below
             if not results:
                 return None
-            if len(results) == 0:
-                return None
-            
-            check = results[0]
-            columns = list(check["metric"].keys())
+
+            columns = []
+            for result in results:                      # union, first-seen order
+                for key in result["metric"]:
+                    if key not in columns:
+                        columns.append(key)
             columns += ["timestamp", self.name]
+
             rows = []
             for result in results:
                 for timestamp, value in result["values"]:
                     parsed_value = self._parse_metric_string(value)
-                    rows.append(
-                        {
-                            **result["metric"],
-                            "timestamp": timestamp,
-                            self.name: parsed_value,
-                        }
-                    )
+                    rows.append({
+                        **result["metric"],
+                        "timestamp": timestamp,
+                        self.name: parsed_value,
+                    })
+
             dataframe = pd.DataFrame(columns=columns, data=rows)
-            dataframe.set_index(
-                pd.to_datetime(dataframe.timestamp, utc=True, unit="s"), inplace=True
-            )
+            dataframe.set_index(pd.to_datetime(dataframe.timestamp, utc=True, unit="s"), inplace=True)
             dataframe["layer"] = self.layer
             dataframe["unit"] = self.unit
-            
             return dataframe
         except (IndexError, KeyError) as exc:
             raise ServiceException(

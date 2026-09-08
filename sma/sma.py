@@ -19,6 +19,10 @@ from sma.model import (
 from sma.report import Report
 from sma.service import ServiceException
 
+# hook names SMA fired before 0.2 -> the SMAObserver protocol's names
+DEPRECATED_EVENTS = {"onLeftWindowStart": "onLeftStart", "onLeftWindowEnd": "onLeftEnd",
+                     "onRightWindowStart": "onRightStart", "onRightWindowEnd": "onRightEnd"}
+
 
 def make_run_hash(start_time: datetime.datetime) -> str:
     hash_input = f"{start_time.isoformat()}_{random.random()}"
@@ -113,11 +117,16 @@ class SustainabilityMeasurementAgent(object):
 
     def notify_observers(self, event: str, **kwargs) -> None:
         self.logger.info(f"Notifying observers of event: {event}")
-        if not (hasattr(SMAObserver, event)):
-            self.logger.warning(f"Observer does not implement event {event}")
+        if not hasattr(SMAObserver, event):
+            self.logger.warning(f"Observer protocol does not define event {event}")
 
         for observer in self.observers:
             method = getattr(observer, event, None)
+            if method is None and event in DEPRECATED_EVENTS:
+                method = getattr(observer, DEPRECATED_EVENTS[event], None)
+                if method is not None:
+                    self.logger.warning(f"{type(observer).__name__} uses deprecated hook "
+                                        f"{DEPRECATED_EVENTS[event]}; rename it to {event}")
             if callable(method):
                 try:
                     method(**kwargs)
@@ -259,10 +268,10 @@ class SustainabilityMeasurementAgent(object):
 
 
         if window is not None:
-            self.notify_observers("onLeftStart")
+            self.notify_observers("onLeftWindowStart")
             self.logger.info(f"Waiting for left window: {window.left}s")
             sleep(window.left)
-            self.notify_observers("onLeftEnd")
+            self.notify_observers("onLeftWindowEnd")
 
         self.logger.info(f"Starting Treatment Phase")
         self.notify_observers("onTreatmentStart")
@@ -292,10 +301,10 @@ class SustainabilityMeasurementAgent(object):
         self.notify_observers("onTreatmentEnd")
 
         if window is not None:
-            self.notify_observers("onRightStart")
+            self.notify_observers("onRightWindowStart")
             self.logger.info(f"Waiting for right window: {window.right}s")
             sleep(window.right)
-            self.notify_observers("onRightEnd")
+            self.notify_observers("onRightWindowEnd")
         end_time = datetime.datetime.now()
 
         if kwargs is not None:
@@ -340,6 +349,9 @@ class SustainabilityMeasurementAgent(object):
                 rep.set_data(name, df)
             except ServiceException as e:
                 self.logger.error(f"Error Querying measurement {name}: {e}")
+                if rep.run_data.status == "ok":   # a failed trigger outranks a failed query
+                    rep.run_data.status = "partial"
+                #TODO: we need to document the meaning of this.
 
         #TODO: don't like this path through to the ReportIO but ...
         rep.persist(overwrite=overwrite)
@@ -356,6 +368,5 @@ class SustainabilityMeasurementAgent(object):
 
     # now handled via context manager 
     def teardown(self) -> None:
-        self.notify_observers("onSessionEnd")
         self.notify_observers("onTeardown")
 
