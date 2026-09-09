@@ -45,6 +45,8 @@ class TimeTrigger(Triggerable):
 
 class SustainabilityMeasurementAgent(object):
 
+    FATAL_EVENTS = ("onRunStart",)   # a run whose setup failed must not be measured
+
     def __init__(self, config: Config,
                  observers: Optional[List[SMAObserver]] = None, meta: SMASession = None, init_modules: Dict[str, Dict[str, Any]] = {}) -> None:
         """
@@ -131,6 +133,8 @@ class SustainabilityMeasurementAgent(object):
                 try:
                     method(**kwargs)
                 except Exception as e:
+                    if event in self.FATAL_EVENTS:
+                        raise
                     self.logger.error(f"Error calling event {event} on observer {observer}: {e}")
             else:
                 self.logger.debug(f"tried calling inexistent event {event} on observer {observer}")
