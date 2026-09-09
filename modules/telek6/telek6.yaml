@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telek6
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: telek6
+  template:
+    metadata:
+      labels:
+        app: telek6
+    spec:
+      containers:
+      - name: telek6
+        image: ghcr.io/tawalaya/telek6:0.1.0
+        ports:
+        - containerPort: 5124
+          name: http
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          periodSeconds: 3
+        volumeMounts:
+        - name: data
+          mountPath: /data
+      volumes:
+      - name: data
+        emptyDir: {}
+      # allow to schedule on control-plane nodes for kind clusters; in real clusters
+      # set nodeSelector in the module config
+      tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/master
+        effect: NoSchedule
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: telek6
+spec:
+  type: NodePort
+  selector:
+    app: telek6
+  ports:
+  - port: 5124
+    targetPort: http

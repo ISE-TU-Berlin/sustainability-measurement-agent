@@ -140,7 +140,7 @@ class SMARun:
             "runHash": self.runHash,
             "duration": self.duration().total_seconds() if self.duration() is not None else "",  # type: ignore
             "treatment_duration": self.treatment_duration().total_seconds() if self.treatment_duration() is not None else "",  # type: ignore
-            "status": self.status if self.status is not None else "",
+            "status": self.status if self.status is not None else "unknown",
             "user_data": self.user_data if self.user_data is not None else {},
         }
 
@@ -158,7 +158,7 @@ class SMARun:
             "runHash",
             "duration",
             "treatment_duration",
-            "user_data"
+            "user_data",
             "status"
         ]
 
