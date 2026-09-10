@@ -33,28 +33,31 @@ class SubprocessrunnerSmaModule(SMAObserver, Triggerable):
 
     def trigger(self, cancel: threading.Event, **kwargs) -> Optional[Dict[str, Any]]:
         self.cancel = cancel
-        self._run_subprocess(self.config.trigger_command)
+        parameters = {**(self.config.treatment_parameters or {}), **kwargs}
+        self._run_subprocess(self.config.treatment_command, parameters=parameters)
 
-    def onSetup(self):
+#    def onSetup(self): # on setup gone??
+    def onRunStart(self, run):
         if self.config.setup_command:
-            self._run_subprocess(self.config.setup_command)
+            self._run_subprocess(self.config.setup_command, parameters=self.config.setup_parameters)
 
-    def onTeardown(self):
+    # def onTeardown(self):
+    def onRunEnd(self, run):
         if self.config.teardown_command:
-            self._run_subprocess(self.config.teardown_command)
+            self._run_subprocess(self.config.teardown_command, parameters=self.config.teardown_parameters)
 
 
 
     # --- PRIVATE METHODS
 
-    def _run_subprocess(self, command: str, cancel: Optional[threading.Event] = None) -> int:
+    def _run_subprocess(self, command: str, parameters: Optional[dict] = {}, cancel: Optional[threading.Event] = None) -> int:
         log.info(f"Running subprocess command: {command}")
 
         # todo: cancel
 
         try:
             result = subprocess.run(
-                shlex.split(command), 
+                shlex.split(command) + [f"--{k}={v}" for k, v in parameters.items()], 
                 cwd=self.config.workdir, 
                 env = self.config.env,
                 capture_output=True, 
@@ -72,9 +75,12 @@ class SubprocessrunnerSmaModule(SMAObserver, Triggerable):
 
 @dataclass
 class SubprocessRunnerConfig:
-    trigger_command: str
+    treatment_command: str
+    treatment_parameters: dict
     setup_command: str
+    setup_parameters: dict
     teardown_command: str
+    teardown_parameters: dict
     workdir: Path
     env = {k: v for k, v in os.environ.items() # todo
        if k not in ("VIRTUAL_ENV", "UV_PROJECT_ENVIRONMENT", "PYTHONHOME", "PYTHONPATH")}
@@ -86,8 +92,12 @@ class SubprocessRunnerConfig:
     @staticmethod
     def from_dict(config_yml: dict) -> "SubprocessRunnerConfig":
         config = {}
-        config["trigger_command"] = config_yml.get("trigger_command")
+        config["treatment_command"] = config_yml.get("treatment_command")
+        config["treatment_parameters"] = config_yml.get("treatment_parameters")
+        config["teardown_parameters"] = config_yml.get("teardown_parameters")
         config["setup_command"] = config_yml.get("setup_command")
+        config["setup_parameters"] = config_yml.get("setup_parameters")
         config["teardown_command"] = config_yml.get("teardown_command")
+        config["teardown_parameters"] = config_yml.get("teardown_parameters")
         config["workdir"] = Path(config_yml["workdir"])
         return SubprocessRunnerConfig(**config)
