@@ -183,6 +183,7 @@ class ReportIO:
             "duration": report.metadata.run.duration().total_seconds(),
             "treatment_duration": report.metadata.run.treatment_duration().total_seconds(),
             "user_data": report.metadata.run.user_data or {},
+            "status": report.metadata.run.status or "unknown",
             "fetch_date": datetime.datetime.now().isoformat()
         }
         if extras:
@@ -327,7 +328,8 @@ class ReportIO:
             treatment_start=datetime.datetime.strptime(run_data["treatment_start"], "%Y_%m_%d_%H_%M_%S"),
             treatment_end=datetime.datetime.strptime(run_data["treatment_end"], "%Y_%m_%d_%H_%M_%S"),
             runHash=run_data["runHash"],
-            user_data=run_data.get("user_data")
+            user_data=run_data.get("user_data"),
+            status=run_data.get("status", "unknown")
         )
 
         # Load all data files from manifest
@@ -382,6 +384,7 @@ class ReportIO:
             treatment_start=datetime.datetime.strptime(run_data["treatment_start"], "%Y_%m_%d_%H_%M_%S"),
             treatment_end=datetime.datetime.strptime(run_data["treatment_end"], "%Y_%m_%d_%H_%M_%S"),
             runHash=run_data["runHash"],
+            status="unknown",
             user_data=run_data.get("user_data")
         )
 
